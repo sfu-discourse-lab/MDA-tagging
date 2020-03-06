@@ -46,11 +46,32 @@ def findThreads(inputFile, outputFolder):
 			numComments += 1
 			last_id = row[1].split('_')[1] + row[1].split('_')[2]
 
+def storeThreads(outputFolder):
+	data = pd.read_csv('%sgnm_threads.csv' %outputFolder)
+
+	first = data["id"].iloc[0]
+	last = first.split('_')[1] + first.split('_')[2]
+	text = ""
+	filename = first
+
+	for index, row in data.iterrows():
+		if row[0].split('_')[1] + row[0].split('_')[2] == last:
+			text += row[1] + " "
+		else:
+
+			with open('%sthreads/%s.txt' %(outputFolder, filename), 'w') as out:
+				out.write(text)
+			text = row[1] + " "
+			filename = row[0]
+		last = row[0].split('_')[1] + row[0].split('_')[2]
+
 def main(inputFile, outputFolder):
 
 	Path(outputFolder).mkdir(parents=True, exist_ok=True)
+	Path(outputFolder + "threads/").mkdir(parents=True, exist_ok=True)
 
 	findThreads(inputFile, outputFolder)
+	storeThreads(outputFolder)
 
 
 if __name__ == "__main__":
