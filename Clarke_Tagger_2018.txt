@@ -1,0 +1,2640 @@
+#!perl;
+use strict; 
+local $/ = undef;								#turn on slurping
+
+open FILE, "<$ARGV[0]";							#open file with tagged Tweets from the Gimpel tagger
+my $text = <FILE>;								#declare the file as a scalar
+close FILE;		#close the file as you now have the information stored in the scalar 
+
+#### following Gimpel tagging in conll style, we need to delete confidence numbers and replace tab before tag with _
+
+$text =~ s/\t\d\.\d+//g;
+$text =~ s/\t/_/g;
+#### find replaced emoji and correct tag
+$text =~ s/emojixx_./emojixx_E/g;
+#### now we have attached the tag to the word, we need to make every Tweet on one line
+								
+$text =~ s/\n\n/<<~~>>~~/g;
+$text =~ s/\n/ /g;
+$text =~ s/<<~~>>~~/\n/g;
+
+#### each Tweet should be on 1 line now, the next step is to replace any special symbols. 
+								#this tagger will tag grammatical and lexical classes by appending /~/ onto the words, therefore we need to remove any existing tildas.
+$text =~ s/~/_Q/g;				#find this tag (which represents miscellaneous items in the Twitter tagger) and replace it with _Q. 
+$text =~ s/~//g;				#find all other instances of ~ and delete them.
+$text =~ s/â€™/\'/g;			#check to see how apostrophes are coded in the tagged text and change them all to '
+$text =~ s/â€œ/\"/g;			#check to see how quotation marks are coded in the tagged text and change them all to "
+$text =~ s/â€/\'/g;
+$text =~ s/(\‘|\’)/\'/g;
+$text =~ s/(\“|\”)/\"/g;
+
+
+#the following section is a declaration of all the variables
+
+my $DO = "(dunno|do|don't|dont|dnt|dn't|duz|dus|does|dusn't|dusnt|duzn't|duznt|dsn't|dsnt|dznt|doesn't|doesnt|did|didn't|didnt|ddn't|ddnt|doing|doin|done|dne|dun|dna|dunna)";
+my $HAVE = "(hv|av|havn't|havnt|hav|have|haf|hafe|haven't|havent|hafent|hafta|hafen't|hafnt|hafn't|haz|has|hasn't|hasnt|hazn't|haznt|had|hadn't|hadnt|havin|having|i've|ive|you've|youve|we've|weve|they've|theyve)";
+my $HAVE2 = "(hv|av|havn't|havnt|hav|have|haf|hafe|haven't|havent|hafent|hafta|hafen't|hafnt|hafn't|haz|has|hasn't|hasnt|hazn't|haznt|had|hadn't|hadnt|havin|having)";
+my $BE = "(that's|thats|b|am|be|iz|is|izn't|isn't|isnt|iznt|wz|ws|woz|wos|was|waz|wosn't|wozn't|wasn't|wazn't|wosnt|woznt|wasnt|waznt|are|r|ar|arn't|aren't|arnt|arent|were|wre|weren't|wern't|wernt|werent|wrn't|wrnt|being|bein|we're|they're|you're|i'm|im|he's|she's|youre|hes|shes|theyre|it's|became|become|becum|becumz|becomes|becoming|becomin|becomin'|been|there's)";
+my $BE2 = "(b|am|be|iz|is|izn't|isn't|isnt|iznt|wz|ws|woz|wos|was|waz|wosn't|wozn't|wasn't|wazn't|wosnt|woznt|wasnt|waznt|are|r|ar|arn't|aren't|arnt|arent|were|wre|weren't|wern't|wernt|werent|wrn't|wrnt|being|bein|became|become|becum|becumz|becomes|becoming|becomin|becomin'|been)";
+my $MODAL = "(kan|can|cannot|kannot|cnnot|knnot|can't|cant|kant|kan't|cnt|cn't|knt|kn't|kould|could|culd|kuld|cud|kud|couldn't|kouldn't|couldnt|kouldnt|culdn't|kudn't|kuldn't|cudn't|cudnt|kudnt|kuldnt|culdnt|may|mayn't|maynt|might|mght|mightnt|mightn't|mghtn't|mghtnt|miten't|mitent|should|shud|shld|shd|shuld|shouldn't|shouldnt|shudn't|shudnt|shdnt|shdn't|shldnt|shldn't|shuldn't|shuldnt|ought|oughtn't|oughtnt|must|mus|mst|msnt|msn't|mstn't|mstnt|mustn't|mustnt|would|wuld|wud|wouldn't|wouldnt|wuldn't|wuldnt|wudn't|wudnt|will|wil|wll|wl|willn't|willnt|wilnt|wiln't|won't|wont|shall|shll|shal|shalln't|shallnt|shaln't|shalnt|shlln't|shllnt|you'll|youll|he'll|she'll|i'll|ill|they'll|theyll|it'll|itll)";
+my $MODALPROB = "(could've|kan|can|cannot|kannot|cnnot|knnot|can't|cant|kant|kan't|cnt|cn't|knt|kn't|kould|could|culd|kuld|cud|kud|couldn't|kouldn't|couldnt|kouldnt|culdn't|kudn't|kuldn't|cudn't|cudnt|kudnt|kuldnt|culdnt|may|mayn't|maynt|might|mght|mightnt|mightn't|mghtn't|mghtnt|miten't|mitent)";
+my $MODALNEC = "(must've|should've|should|shud|shld|shd|shuld|shouldn't|shouldnt|shudn't|shudnt|shdnt|shdn't|shldnt|shldn't|shuldn't|shuldnt|ought|oughtn't|oughtnt|must|mus|mst|msnt|msn't|mstn't|mstnt|mustn't|mustnt)";
+my $MODALPRED = "(would've|would|wuld|wud|wouldn't|wouldnt|wuldn't|wuldnt|wudn't|wudnt|will|wil|wll|wl|willn't|willnt|wilnt|wiln't|won't|wont|shall|shll|shal|shalln't|shallnt|shaln't|shalnt|shlln't|shllnt|shan't|shant)";
+my $STANCEVRBS = "(want|wnt|wanting|wnting|wntin|wantin|wantng|wntng|wants|wnts|tend|tends|tended|tending|seem|seemed|appear|appeared|seeming|seemin|seemng|seemin'|appearing|appearin|appearng|appearin'|seems|appears|need|needed|needing|needin|needs|wish|wishes|wishing|wishin|wished|like|likes|liked|liking|likin|deplore|deplores|deploring|deplored|deplorin|detest|detests|detesting|detested|detestin|love|loves|loved|loving|luv|luvs|luving|luved|luvin|lovin|hate|hates|hating|hatin|hated|dislike|dislikes|disliking|dislikin|disliked|prefer|prfer|prefr|prfr|preferred|preferrd|preferd|prefered|prefrred|prefrd|prefrrd|prfrrd|prefers|prfers|prefrs|preferring|preferrin|prefrring|prefrrin|prefering|preferin|prferring|prferrin|preferrng|preferng|want|wants|wanted|wanting|wantin|wanted|wnted|wantd|wanna|wna|wana|adore|adores|adored|adoring|adorin|dread|dreads|dreaded|dreading|dreadin)";
+my $PERCEPTVRBS = "(perceive|perceives|perceived|perceiving|smell|smells|smelled|smelt|smelling|spot|spots|spotted|spotting|spy|spies|spying|spied|spyed|observe|observes|observing|observed|notice|noticed|notices|noticing|overheard|overhear|overhears|ovahears|ovahear|ovaheard|overhearing|ovahearing|overhearin|ovahearin|feel|feels|felt|feeling|feelin|hear|hears|heard|hearing|hearin|see|saw|seeing|seein|sees|seen|c|cing|cin|watch|watched|wtched|watches|watching|watchin|wtches|wtching|wtchin|wtch|wach|waches|waching|wachin|wached)";
+my $EXIST = "(there|thre|ther|thr|dere|der)";
+my $EXISTVB = "(there's|thre's|ther's|thr's|dere's|der's|theres|thres|thers|thrs|deres|ders|there'll|thre'll|ther'll|thr'll|dere'll|der'll|therell|threll|therll|thrll|derell|derll)";
+my $SUBJPRO = "(i|we|he|she|they|i'm|im|itd|it'd|it's|it'll|itll|i'd|id|i'll|i've|ive|we're|we'd|we'll|we've|weve|she's|he's|shes|hes|she'd|he'd|she'll|he'll|they're|theyre|they'd|theyd|they'll|theyll|they've|theyve)";
+my $OBJPRO = "(me|us|him|them)";
+my $POSSDET = "(my|our|your|their|its|her|his)";
+my $POSSPRO = "(mine|ours|yours|theirs|hers|his)";
+my $REFLEXPRO = "(myself|myslf|meself|meslf|ourselves|ourslves|ourslvs|ourselvs|himself|hmself|himslf|hmslf|themselves|themslves|themselvs|thmselves|thmslves|thmselvs|thmslvs|thmslves|herself|hrself|herslf|hrslf|yourself|yourslf|yuself|yuslf|urself|urslf|yrself|yrslf|yourselves|yrselves|urselves|yourselves|yourslves|yourslvs|yourselvs|yrselves|yrslvs|yrselvs|yrslves|urselves|urslvs|urselvs|urslves|itself|itslf)";
+my $OTHERPRO = "(her|hr|it|you|yu|u|y'all|yall|you're|youre|you'd|youd|you'll|youll|you've|youve|u've|uve|u'll|ull|u'd|ud|u're|ure|y're|yre|yu'd|yud|yu'll|yull|yu've|yuve|yu're|yure|ur)";
+my $PREPDEC = "(about|after|against|agnst|amid|amidst|among|amongst|at|\@|before|b4|befor|bfore|bfor|besides|bsides|between|btween|by|despite|during|durin|except|for|4|from|frm|in|into|in2|like|minus|notwithstanding|notwithstandin|of|off|off+|on|onto|on2|opposite|out|over|per|plus|pro|re|since|than|through|throughout|thru|to|2|toward|2ward|towards|2wards|upon|under|versus|vs|via|w\\.|with|w\/|w|wiv|within|without)";
+my $PREP = "_P";
+my $CCONJ = "(and|or|n|nd|or+|an+d|nor|\&)_\&";
+my $ADV = "_R";
+my $ADJ = "_A";
+my $N = "_N";
+my $PRPN = "_\^";
+my $PRPNPOS = "_Z";
+my $PRPNVB = "_M";
+my $PUBV = "(praise|praised|praises|praising|vow|vows|vowed|vowing|acknowledge|acknwledge|acknowldg|acknowldge|acknwldg|acknowledg|acknowledged|acknwledged|acknwledgd|acknowldgd|acknowldged|acknowldgd|acknwldgd|acknwledged|acknowledging|acknowledgin|acknowledgng|acknwledging|acknwledgin|acknwledgng|acknowldging|acknowldgin|acknowldgng|acknwldging|acknwldgin|acknwledgng|address|addrss|adress|addres|addressed|addressd|addrssed|addrssd|adressed|adressd|addresed|addresd|addressing|addressin|addressng|addrssing|addrssin|addrssng|adressing|adressin|adressng|addresing|addresin|addresng|admit|admt|admitted|admited|admtted|admitting|admittin|admittng|admiting|admitin|admitng|advise|advised|advising|advisin|advisng|advse|advsed|advsing|advsin|advsng|agree|agreed|agreeing|agreein|agreeng|analyse|analysed|analysd|analysing|analysin|analysng|announce|announced|announcd|announcing|announcin|announcng|answer|answered|answering|answerin|answerng|answr|answred|answrd|answring|answrin|answrng|appeal|appealed|appeald|appealled|appealld|appealing|appealin|appealng|appealling|appeallin|appeallng|argue|argued|argud|arguing|arguin|argu|articulate|articulated|articulatd|articulating|articulatin|articulatng|ask|asked|askd|asking|askin|askng|assert|asserted|asserting|assertin|assertng|assrt|assrting|assrtin|assrtng|assrted|assrtd|assure|assuring|assurin|assurng|assured|assurd|babble|babbled|babbld|babbling|babblin|babblng|bark|barked|barkd|barking|barkin|barkng|bawl|bawled|bawld|bawling|bawlin|bawlng|beg|begged|beggd|begging|beggin|beggng|bellow|bellowed|bellowd|bellowing|bellowin|bellowng|bemoan|bemoaning|bemoanin|bemoaned|bemoand|blabber|blabbering|blabberin|blabberng|blabbered|blabberd|blather|blathering|blatherin|blatherng|blathered|blatherd|bleat|bleated|bleatd|bleating|bleatin|bleatng|blubber|blubbered|blubberd|blubbering|blubberin|blubberng|bluff|bluffed|bluffd|bluffing|bluffin|bluffng|blurt|blurting|blurtin|blurtng|blurted|blurtd|bluster|blustered|blusterd|blustering|blusterin|blusterng|boast|boasting|boastin|boastng|boasted|boastd|brag|bragged|braggd|bragging|braggin|breathe|breathing|breathin|breathng|breathed|breathd|cackle|cackled|cackld|cackling|cacklin|cacklng|call|called|calld|calling|callin|chant|chanted|chantd|chanting|chantin|chatter|chattering|chatterin|chattered|chatterd|check|checked|checkd|checking|checkin|cheer|cheered|cheerd|cheering|cheerin|chime|chimed|chimd|chiming|chimin|chirp|chirped|chirpd|chirping|chirpin|chirrup|chirruping|chirrupin|chirruped|chirrupd|chortle|chortled|chortld|chortling|chortlin|chuckle|chuckled|chuckld|chuckling|chucklin|claim|claiming|claimin|claimed|claimd|clarify|clarified|clarifying|clarifyin|cluck|clucking|cluckin|clucked|cluckd|coax|coaxing|coaxin|coaxed|coaxd|comment|commented|commentd|commenting|commentin|complain|complained|complaind|complaining|complainin|concede|conceded|conceding|concedin|confess|confessed|confessd|confessing|confessin|confide|confiding|confidin|confided|confirm|confirmed|confirmd|confirming|confirmin|consent|consented|consentd|consenting|consentin|convey|conveyed|conveyd|conveying|conveyin|coo|cooed|cooing|cooin|correct|corrected|correcting|correctin|correctd|couch|couching|couchin|couched|couchd|cough|coughing|coughin|coughed|coughd|critique|critiqued|critiqud|critiquing|critiquin|crow|crowing|crowin|crowed|cry|cried|crying|cryin|declare|declared|declaring|declarin|delineate|delineated|delineatd|delineating|delineatin|deny|denied|denying|denyin|describe|describing|describin|described|describd|disagree|disagreeing|disagreein|disagreed|disagred|drawl|drawling|drawlin|drawled|drawld|drone|droning|dronin|droned|entreat|entreating|entreatin|entreated|entreatd|exclaim|exclaiming|exclaimin|exclaimed|exclaimd|expand|expanded|expanding|expandin|explain|explaining|explainin|explained|explaind|express|expressed|expressd|expressing|expressin|falter|faltered|falterd|faltering|falterin|falterng|forward|forwarded|forwarding|forwardin|fuss|fussed|fussd|fussing|fussin|giggle|giggled|giggld|giggling|gigglin|goad|goading|goadin|goaded|groan|groaning|groanin|groaned|groand|grumble|grumbled|grumbld|grumbling|grumblin|growl|growling|growlin|growled|growld|grunt|grunting|gruntin|grunted|gruntd|hint|hinted|hinting|hintin|hiss|hissing|hissin|hissed|hissd|holler|hollered|hollerd|holla|hollad|hollering|hollerin|hoot|hooting|hootin|hooted|howl|howled|howld|howling|howlin|hum|humming|hummin|hummed|hummd|illustrate|illustrating|illustratin|illstrated|illustratd|implore|implored|implord|imploring|implorin|inform|informed|informd|informing|informin|interrupt|interrupting|interruptin|interrupted|interruptd|intimate|intimating|intimatin|intimated|intimatd|intone|intoning|intonin|intoned|intond|jabber|jabbering|jabberin|jabbered|jabbberd|jibber|jibbering|jibberin|jibbered|jibberd|judge|judged|judging|judgin|judgd|laud|lauding|laudin|lauded|laugh|laughing|laughin|laughed|laughd|lecture|lecturing|lecturin|lectured|lecturd|lie|lying|lyin|lied|maintain|maintaining|maintainin|maintained|maintaind|mention|mentioning|mentionin|mentioned|mentiond|mislead|misled|misleading|misleadin|moan|moaned|moand|moaning|moanin|mouth|mouthed|mouthd|mouthing|mouthin|mumble|mumbled|mumbld|mumbling|mumblin|murmur|murmuring|murmurin|murmured|murmurd|mutter|muttering|mutterin|muttered|mutterd|nag|nagged|naggd|nagging|naggin|narrate|narrated|narrating|narratin|narratd|observe|observing|observin|observed|observd|offer|offered|offerd|offering|offerin|outline|outlined|outlind|outlining|outlinin|pant|panting|pantin|panted|parrot|parroting|parrotin|parroted|persuade|persuaded|persuading|persuadin|pester|pestering|pesterin|pestered|pesterd|plead|pleaded|pleading|pleadin|prattle|prattled|prattld|prattling|prattlin|preach|preaching|preachin|preached|preachd|proclaim|proclaimed|proclaimd|proclaiming|proclaimin|profess|professing|professin|professed|professd|proffer|proffered|profferd|proffering|proferrin|promise|promised|promisd|promising|promisin|protest|protested|protesting|protestin|purr|purring|purrin|purred|purrd|query|queried|querying|queryin|question|questioned|questiond|questioning|questionin|quote|quoted|quoting|quotin|ramble|rambling|ramblin|rambled|rambld|rant|ranting|rantin|ranted|recount|recounting|recountin|recounted|rebuff|rebuffing|rebuffin|rebuffed|rebuffd|refuse|refusing|refusin|refused|refusd|rejoin|rejoined|rejoind|rejoining|rejoinin|remark|remarking|remarkin|remarked|remarkd|remonstrate|remonstrating|remonstratin|remonstrated|remonstratd|repeat|repeated|repeating|repeatin|repeatd|reply|replied|replying|replyin|report|reprting|reportin|reprtin|reported|reprtd|reportd|reprtin|reprted|respond|responding|respondin|responded|retort|retorting|retortin|retorted|reveal|revealing|revealin|revealed|reveald|roar|roaring|roarin|roared|roard|sass|sassing|sassin|sassed|sassd|say|saying|sayin|said|scream|screaming|screamin|screamed|screamd|screech|screeching|screechin|screeched|screechd|scold|scolding|scoldin|scolded|shout|shouted|shouting|shoutin|shriek|shrieking|shriekin|shrieked|shriekd|sing|sang|singing|singin|simper|simpering|simperin|simpered|simperd|sigh|sighed|sighd|sighing|sighin|slur|slurring|slurrin|slurred|slurrd|snap|snapping|snappin|snapped|snappd|snarl|snarling|snarlin|snarled|snarld|snicker|snickering|snickerin|snickered|snickerd|sniff|sniffing|sniffin|sniffed|sniffd|snigger|sniggering|sniggerin|sniggered|sniggerd|snivel|snivelled|snivelld|snivelling|snivellin|sob|sobbing|sobbin|sobbed|sobbd|speak|speaking|speakin|spoke|spit|spitting|spittin|spat|spout|spouting|spoutin|spouted|sputter|sputtered|sputterd|sputtering|sputterin|squawk|squawking|squawkin|squawked|squawkd|squeak|squeaking|squeakin|squeaked|squeakd|squeal|squealed|squeald|squealing|squealin|stammer|stammered|stammerd|stammering|stammerin|state|stating|statin|stated|stutter|stuttering|stutterin|stuttered|stutterd|submit|submitted|submitting|submitin|submittin|suggest|suggesting|suggestin|suggested|summari[zs]e|summari[zs]ing|summari[sz]in|summari[zs]ed|summari[sz]d|summon|summoned|summond|summoning|summonin|surmise|surmised|surmisd|surmising|surmisin|swear|swearing|swearin|swearin'|swore|table|tabled|tabling|tablin|tattle|tattled|tattld|tattling|tattlin|taunt|taunting|tauntin|taunted|tease|teased|teasd|teasing|teasin|tell|telling|tellin|told|trill|trilled|trilling|trillin|twitter|tweeting|tweetin|twittering|twitterin|twittered|twitterd|tweeted|upbraid|upbraiding|upbraidin|upbraided|vocali[zs]e|vocali[zs]ing|vocali[sz]in|vocali[sz]ed|vocali[sz]d|vociferate|vociferated|vociferating|vociferatin|voice|voiced|voicd|voicing|voicin|voicin'|wail|warns|warn|warned|warning|wailing|wailin'|wailed|waild|warble|warbling|warblin|warbled|warbld|weep|weeping|weepin|weeped|weepd|whimper|whimpering|whimperin|whimpered|whimperd|whine|whining|whined|whind|whisper|whispering|whisperin|whispered|whisperd|whistle|whistling|whistlin|whistled|whistld|write|writing|writin|wrote|yammer|yammering|yammerin|yammered|yammerd|yap|yapping|yappin|yapped|yappd|yell|yelling|yellin|yelled|yelld|yelp|yelping|yelpin|yelped|yelpd|acknowledges|addresses|admits|advises|agrees|analyses|announces|answers|appeals|argues|articulates|asks|asserts|assures|babbles|barks|bawls|begs|bellows|bemoans|blabbers|blathers|bleats|blubbers|bluffs|blurts|blusters|boasts|brags|breathes|cackles|calls|chants|chatters|checks|cheers|chimes|chirps|chirrups|chortles|chuckles|claims|clarifies|clucks|coaxes|comments|complains|concedes|confesses|confides|confirms|consents|conveys|coos|corrects|couches|coughs|critiques|crows|cries|declares|delineates|denies|describes|disagrees|drawls|drones|entreats|exclaims|expands|explains|expresses|falters|forwards|fusses|giggles|goads|groans|grumbles|growls|grunts|hints|hisses|hollers|hoots|howls|hums|illustrates|implores|informs|interrupts|intimates|intones|jabbers|jibbers|judges|lauds|laughs|lectures|lies|maintains|mentions|misleads|moans|mouths|mumbles|murmurs|mutters|nags|narrates|observes|offers|outlines|pants|parrots|persuades|pesters|pleads|prattles|preaches|proclaims|professes|proffers|promises|protests|purrs|queries|questions|quotes|rambles|rants|recounts|rebuffs|refuses|rejoins|remarks|remonstrates|repeats|replies|reports|responds|retorts|reveals|roars|sasses|says|screams|screeches|scolds|shouts|shrieks|sings|simpers|sighs|slurs|snaps|snarls|snickers|sniffs|sniggers|snivels|sobs|speaks|spits|spouts|sputters|squawks|squeaks|squeals|stammers|states|stutters|submits|suggests|summarises|summons|surmises|swears|tables|tattles|taunts|teases|tells|trills|twitters|upbraids|vocalises|vociferates|voices|wails|warbles|weeps|whimpers|whines|whispers|whistles|writes|yammers|yaps|yells|yelps)";
+my $PRVV = "(wonders|wonder|wondering|wonderin|wondered|wonderd|anticipate|anticipte|anticipate|anticpate|anticipated|anticpated|anticipted|anticipating|anticipatin|anticipating|anticpatin|anticiptin|anticipates|anticpates|anticiptes|assume|asume|assumed|asumed|assumd|asumd|assuming|assumin|asumin|assumes|assums|conclude|conclde|conclud|cnclude|concluded|cncluded|conclded|concludd|concluding|concludin|cncluding|cncludin|conclding|concldin|concludes|cncludes|cncluds|decide|dcide|decid|decde|decided|dcided|decidd|deciding|decidin|dcidin|decides|decids|dcides|demonstrate|dmonstrate|demonstrte|demonstrated|dmonstrated|demonstrted|demonstrating|dmonstrating|demonstratin|dmonstratin|demonstrtin|dmonstratin|demonstrates|dmonstrates|demonstrtes|determine|dtermine|detrmine|determne|determined|dtermined|detrmined|determned|determind|dtermind|determnd|determining|determinin|dtermining|dterminin|detrminin|detrmining|determines|dtermines|detrmines|determnes|dtrmins|dtrmin|doubt|doubtd|doubted|doubting|doubtin|doubts|estimate|estimte|estmate|estimating|estimatin|estmating|estmatin|estimatng|estimates|estmates|estimated|estmated|estimatd|fear|feard|feared|fears|fearing|fearin|fearng|hope|hpe|hoped|hoping|hopin|hopes|imagine|imagin|imagined|imagind|imagining|imaginin|imagines|imagins|imply|implied|implyd|implies|implis|implying|implyin|indicate|indcate|indicat|indicated|indicatd|indicating|indcatin|indicatin|indicates|indicats|indcats|infer|inferred|inferd|inferrd|infers|inferring|inferrin|inferin|infering|learn|lern|learnt|lernt|lrn|lrnt|learning|learnin|lerning|lernin|lrnin|lrning|learns|lerns|lrns|learned|learnd|lernd|lrnd|notice|notic|notce|ntice|noticed|noticd|notced|notcd|nticed|noticing|noticin|nticing|nticin|notcing|notcin|noticng|noticn|notices|ntices|notces|prove|prve|prv|proved|prved|prvd|proves|prves|prvs|proving|provin|provng|provn|prvin|prvn|reali[zs]e|reli[sz]e|rli?ze|real[sz]e|reali[zs]ing|reali[sz]in|reli[sz]ing|reli[sz]in|rli[sz]ing|rli[sz]in|reali[zs]ed|reali[sz]d|recogni[zs]e|recgni[sz]e|rcogni[sz]e|recogni[zs]ed|rcogni[sz]ed|recgni[sz]ed|recogni[sz]d|rcogni[sz]d|recgni[sz]d|recogni[zs]es|rcogni[sz]es|recgni[sz]es|recogni[sz]ing|recogni[sz]in|rcogni[sz]ing|rcogni[sz]in|recgni[sz]ing|recgni[sz]in|recgn[zs]in|recgn[sz]ing|reveal|rveal|revealed|rvealed|reveald|rveald|revealing|revealin|rvealing|rvealin|reveals|rveals|show|shw|shows|shws|showing|showin|shwin|shwing|showed|supposed|supposd|suppsed|suposed|suposd|suposd|suppose|supose|suppse|supposing|supposin|suposing|suposin|suposn|supposes|suppses|suposes|understand|undrstand|undastand|undrstnd|undrstod|understood|undrstood|understanding|understandin|undrstandin|undrstanding|understands|understnds|undrstands|know|knw|knowing|knowin|knwin|knwing|knows|knws|think|thnk|nos|thought|thinks|thnks|thinking|thinkin|thnkng|thnking|guess|gues|guessing|guessin|guesing|guesin|guessng|guesses|gueses|mean|meanin|meaning|means|meant|remember|rememba|member|memba|rmember|rmemba|remembering|rememberin|rememberng|rmembering|rmembrin|rmembrng|remembers|rmembers|rmembas|remembrs|rmembers|rmembrs|believe|beleve|blieve|believ|believing|believin|blieving|blievin|belevng|belevin|believes|blieves|believes|believs|discover|discver|discvr|dscover|dscvr|dscovr|discovering|discoverin|discovrin|discovring|discoverng|discovers|discovrs|discvers|forget|frget|forgt|forgot|frgt|forgetting|forgettin|frgettng|frgetting|frgettin|forgettn|frgetting|forgets|4get|4got|4gets|4gotten|4gettin|4getting|4getin|knew|remembered|remembad|rmembered|rmembrd|guessed|guesed|guessd|guesd|meant|believed|blievd|discovered|discvred|discovrd|found|find|finding|findin|finds)";
+my $SUAV = "(allow|allw|allowed|allowd|allwd|allowing|allowin|allwing|alowin|allows|allws|arrange|arrnge|arange|arranged|arrangd|aranged|arangd|arrnged|arranging|arrangin|aranging|arangin|arranges|aranges|arrnges|beg|begs|begging|beggin|begged|beggd|begd|command|comand|commnd|cmmand|commanded|comanded|commnded|cmmanded|commanding|commandin|comandng|comandin|comandin|commands|comands|commnds|decree|dcree|decrees|dcrees|decreed|dcreed|decreeing|decreein|dcreeing|dcreein|demand|dmand|demand|demnd|demanded|dmanded|demnded|demanding|dmanding|demandin|dmandin|demnding|demndin|demandng|dmandng|dmands|demands|demnds|desire|dsire|desires|dsires|desired|dsired|desiring|desirin|dsiring|dsirin|desirng|dsirng|enjoin|enjoins|enjoined|enjoind|enjoining|enjoinin|grant|granted|grantd|granting|grantin|grantng|grants|insist|insisted|insistd|insisting|insistin|insistng|insists|instruct|instrct|instructed|instructd|instrcted|instructing|instructin|instrctin|instrcting|instructng|instrctng|instructs|instrcts|intend|intnd|intends|intnds|intended|intnded|intending|intendin|intndin|intnding|intendng|intndng|move|mve|mv|move|mov|moved|mved|movd|mvd|moving|movin|mving|mvin|movng|moves|mves|ordain|ordaining|ordainin|ordained|ordaind|ordains|order|orda|ordr|ordering|orderin|ordrin|ordring|orderng|ordrng|orders|ordrs|ordered|orderd|ordrd|pledge|pldge|pledges|pldges|pledged|pldged|pledgd|pledging|pledgin|pledgng|pray|prays|praying|prayin|prayng|prayed|prayd|prefer|prfer|prefr|prfr|preferred|preferrd|preferd|prefered|prefrred|prefrd|prefrrd|prfrrd|prefers|prfers|prefrs|preferring|preferrin|prefrring|prefrrin|prefering|preferin|prferring|prferrin|preferrng|preferng|pronounce|pronounc|prnounce|pronounc'd|pronounced|prnounced|pronouncd|pronounces|prnounces|pronouncing|pronouncin|pronouncng|prnouncin|prnouncing|prnouncng|propose|prpose|propse|propos|proposing|proposin|prpsin|prpsing|propsin|propsing|prposin|prposing|proposes|propses|proposed|proposd|prposed|prposd|recommend|recommnd|recomend|rcommend|recmmend|recomended|recommended|recommnded|recommending|recommendin|recommnding|recommndin|rcommending|rcommendin|recomending|recomendin|recommends|recommnds|rcommends|recomends|request|requst|rquest|requesting|requestin|requsting|requstin|rquestin|rquesting|rquestng|requestng|requstng|requested|requsted|rquested|requestd|rquestd|requests|rquests|requsts|require|rquire|requir|required|requird|rquired|requiring|requirin|requirng|rquiring|rquirin|rquirng|requires|rquires|resolve|reslve|resolves|reslves|resolved|resolvd|reslved|reslvd|resolving|resolvin|reslving|reslvin|resolvng|reslvng|rule|ruled|ruling|rulin|rules|stipulate|stipulates|stipulating|stipulatin|stipulated|stipulatd|urge|urging|urgin|urges|urged|urgd|vote|vte|voting|votin|vting|vtin|votng|vtng|voted|votes|vtes)";
+my $CAUSVB = "(enable|enables|enabled|enabling|cause|causes|caused|causing|drive|drives|drove|driven|driving|forced|forces|force|forcing|lead|leads|led|leading|prompt|prompts|prompted|prompting)";
+my $WHP = "(who|whom|whose|which|whse|whch)";
+my $WHO = "(who's|what|what's|wot|wots|wot's|wat|wat's|wt|wht|wht's|where|where's|wer|wer's|wers|wher|whers|wher's|whre|whre's|whres|whr|when|when's|whens|wen|wen's|wens|whn|whn's|whns|wn's|how|how's|hows|hw|hw's|hws|whether|whther|whethr|whthr|why|why's|whys|y|y's|whoever|whoeva|whoevr|whomever|whomeva|whomevr|whichever|whcheva|whchevr|whichevr|whicheva|wherever|whevr|whrever|whreva|wereva|werever|whereva|whenever|wheneva|wenever|weneva|whnevr|whneva|wenevr|whatever|whateva|woteva|wotever|wotevr|whtevr|whteva|watevr|watever|however|hweva|hwevr|hwever|howeva|howevr)";
+my $WHO2 = "(what|wot|wat|wt|wht|where|wer|wher|whre|whr|when|wen|whn|how|hw|whether|whther|whethr|whthr|why|y|whoever|whoeva|whoevr|whomever|whomeva|whomevr|whichever|whcheva|whchevr|whichevr|whicheva|wherever|whevr|whrever|whreva|wereva|werever|whereva|whenever|wheneva|wenever|weneva|whnevr|whneva|wenevr|whatever|whateva|woteva|wotever|wotevr|whtevr|whteva|watevr|watever|however|hweva|hwevr|hwever|howeva|howevr)";
+my $WHCONTRACT = "(what's|wot's|wat's|wht's|where's|wer's|whr's|wher's|when's|whn's|wen's|how's|hw's|why's|y's)";
+my $INDEFART = "(a|an)";
+my $DEFART = "(the|teh|tha|da|de)";
+my $DEM = "(this|dis|ths|these|dese|thse|those)";
+my $QUAN = "(both|loads|lots|plenty|each|ech|all|every|evry|many|mny|much|mch|few|fw|several|svrl|sevrl|sveral|sevral|some|sum|sme|som|any|eny)";
+my $NUM = "_\$";
+my $ORD = "(another|first|frst|second|secnd|scnd|third|thrd|fourth|forth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth|thirteenth|fourteenth|fifteenth|sixteenth|seventeenth|eighteenth|nineteenth|twentieth|thirtieth|fourtieth|fiftieth|sixtieth|seventieth|eightieth|ninetieth|hundredth|1st|2nd|3rd|4th|6th|7th|8th|9th|10th|11th|12th|13th|14th|15th|16th|17th|18th|19th|20th|21st|22nd|23rd|24th|25th|26th|27th|28th|29th|30th|40th|50th|60th|70th|80th|90th|100th|\d+th|\d+rd|\d+nd)";
+my $BODONETH = "(everybody|evrybody|everybodi|evrybodi|everybdy|evrybdy|evrybdi|somebody|sumbody|somebodi|somebdy|sumbdy|sombdy|sumbdi|sumbodi|anybody|nebody|nebodi|nebdy|nebdi|enybody|enybodi|enybdy|enybdi|anybodi|anybdy|anybdi|everyone|every1|evry1|evryone|someone|sumone|some1|sum1|somone|som1|anyone|any1|neone|ne1|eny1|enyone|everything|evrything|everythang|evrythang|evryfin|everyfin|evrythng|everythng|evrythin|everythin|everythn|evrythn|something|sumthing|somthing|sumthang|somethang|somthang|sumfin|somefin|somfin|sumthng|somethng|somthng|sumthin|somethin|somthin|sumthn|somethn|somthn|anything|nething|enything|anythang|nethang|enythang|anyfin|nefin|enyfin|anythng|nethng|enythng|anythin|nethin|enythin|anythn|nethn|enythn)";
+my $BODONETHS = "(everybody's|evrybody's|everybodi's|evrybodi's|everybdy's|evrybdy's|evrybdi's|somebody's|sumbody's|somebodi's|somebdy's|sumbdy's|sombdy's|sumbdi's|sumbodi's|anybody's|nebody|nebodi's|nebdy's|nebdi's|enybody's|enybodi's|enybdy's|enybdi's|anybodi's|anybdy's|anybdi's|everyone's|every1's|evry1's|evryone's|someone's|sumone's|some1's|sum1's|somone's|som1's|anyone's|any1's|neone's|ne1's|eny1's|enyone's|everything's|evrything's|everythang's|evrythang's|evryfin's|everyfin's|evrythng's|everythng's|evrythin's|everythin's|everythn's|evrythn's|something's|sumthing's|somthing's|sumthang's|somethang's|somthang's|sumfin's|somefin's|somfin's|sumthng's|somethng's|somthng's|sumthin's|somethin's|somthin's|sumthn's|somethn's|somthn's|anything's|nething's|enything's|anythang's|nethang's|enythang's|anyfin's|nefin's|enyfin's|anythng's|nethng's|enythng's|anythin's|nethin's|enythin's|anythn's|nethn's|enythn's)";
+
+my $TITLE = "(mr_|mr\._|mister_|mrs_|mrs\._|miss_N|miss_\^|ms\._^|miss_^|dr_|dr\._|madam_|ma'am_|sir_|professor_|prof\._|madame_)"; #i have included the tag on all of these because 'miss' is a common verb on twitter and so I have specified the tag, however the others may be inconsistently tagged so I have not included the tags
+my $CL_P = "(\.|\!|\?|\:|\;|\-)_,";
+my $AL_P = "(\.|\!|\?|\:|\;|\-|\,)_,";
+my $AMPLIFIER = "(too|absolutely|absolutly|abslutely|absoltely|completely|cmpletely|compltely|completly|cmpltly|entirely|entirly|perfectly|perfctly|prfctly|totally|totlly|totaly|ttly|very|vry|really|rly|rele|realy|bloody|bludy|bldy|fucking|fckin|fckn|fckng|fuckin|facking|fackin|fackng|fuckng|fuckn|frickin|frickin'|friggin'|friggin|frigin'|frigin|utterly|uttrly|uterly|badly|bdly|greatly|gr8ly|gratly|extremely|extrmly|extremly|extrmely|awfully|awfuly|awfly|considerably|considerbly|considrbly|consdrbly|cnsdrbly|cnsidrbly|cnsdrably|cnsidrably|cnsiderbly|damn|dam+n|damn+|dead|deeply|deply|enormously|enormosly|enrmously|exceptionally|exceptionaly|excptionally|fully|fuly|flly|heavily|hevily|highly|hghly|incredibly|incredbly|incrdbly|incrdibly|jolly|joly|particularly|particuly|particulrly|quite|qute|real|rl|severely|severly|severley|severeley|terribly|trribly|teribly|thoroughly|thoroly|thorouly|thorougly|wholly|wholy)";
+my $DOWNTNR = "(sorta|barely|hardly|hrdly|slightly|slghtly|somewhat|sumwot|somewat|sumwat|somwat|somewot|somwot|sumwhat|somwhat|almost|almst|nearly|nerly|nrly|scarcely|scarcly|quite|rather|ratha|fairly|pretty|prtty|prty|prety|pritti|priti|kinda|simply)";
+my $PLACADV = "(aboard|abord|above|abuve|abov|abuv|abroad|across|akross|acros|akross|ahead|ahed|alongside|alongsid|alngside|alngsde|around|arand|arnd|ashore|ashor|astern|asturn|away|awy|behind|bhind|bhnd|below|belw|beneath|bneath|bneth|beside|bside|besid|downhill|dwnhill|dwnhll|dwnhil|downhil|downstairs|dwnstairs|dwnstars|downstream|dwnstream|dwnstrem|downstrem|downwind|dwnwind|east|eastward|eastwards|upward|upwards|onward|onwards|downward|downwards|inward|inwards|outward|outwards|westward|westwards|nothward|northwards|southward|southwards|far|hereabouts|hreabts|hereabts|hreabouts|indoors|indrs|inland|inlnd|inshore|inshre|inshor|inside|insde|insid|locally|localy|lclly|near|nr|nearby|nrby|nowhere|nowere|nowher|nwhere|nowher|nwhere|north|nrth|offshore|outdoors|outdrs|outside|otside|outsid|overboard|ovaboard|overbord|ovabord|overland|ovaland|overlnd|ovalnd|overseas|ovaseas|south|sth|underfoot|undafoot|undrfoot|undrfut|underground|undagrand|undrground|undaground|undergrand|undrgrand|underneath|undrneth|undaneth|undrneath|undaneath|uphill|uphll|uphil|upstairs|upstars|upstrs|upstream|upstrm|west|wst)";
+my $SPATPRO = "(here|hre|there|dere|thre|anywhere|enywhere|eniwhere|newhere|aniwhere|anywer|enywer|eniwer|newhre|anywhre|aniwhre|enywhre|everywhere|evrywhere|evrywer|evrwhre|everywer|nowhere|nowher|elsewhere|elswher|elsewher|somewhere|sumwhere|somewher|sumwher|sumwere|somewere|sumwhre|smwhre)";
+my $TIMEADV = "(afterwards|aftrwrds|afterwrds|aftrwards|again|agen|agn|earlier|erlier|early|erly|earli|eventually|evntully|eventully|evntualy|evntally|formerly|frmerly|4merly|immediately|imediately|immedately|immeditely|immediatly|imediatly|imedately|initially|intially|initally|initialy|intialy|instantly|instntly|late|l8|lately|l8ly|latly|ltly|later|l8r|ltr|latr|lter|lta|momentarily|momentarly|momntarily|mmntarily|now|nw|nowadays|nwadays|nwadys|nowadayz|nowadaiz|nowadaz|nwadaz|once|1ce|originally|originaly|orignally|orignaly|presently|presntly|prsntly|prsently|previously|prevously|prviously|previsly|recently|rcntly|recntly|rcently|shortly|shrtly|simultaneously|simultanously|simultaneosly|simltaneously|simultnusly|soon|sn|subsequently|sbsquntly|sbcquntly|subsquntly|today|2day|tday|tdy|2dy|tomorrow|2mor|2moz|2mza|2morra|2mozza|2moza|tmorrow|tmoz|tomorra|tmrw|tmrrw|tonight|2night|tnight|2nite|tnite|tonite|2nte|yesterday|yestaday|yestadai|yestady|ystrdy|ystaday|ystadai|ysterdy|ysterdai|ysterday|ystrdai|ystrday)";
+my $LAUGH = "(lmao+|lmfao+|lmf+ao|lmfa+o|lo+l|lol+|l[ol]+|lol[lo]*|haha|ha|ha[ha]*|ha[ha]+|hah+a|ha+ha+|bwaha+|bwa[ha]+|rofl|ha[hagb]*)";
+my $SUBRDNTR = "(since|snce|sinc|while|whilst|whereupon|wherupon|whereas|wereas|wheras|whereby|wherby|wereby)";
+my $CAUSESUB = "(because|cos|cause|b'cause|b'cos|'cos|bcos|bcause|becos|becoz|bcoz|bcuz|bcus|becaus|'cause|bcz)";
+my $CONCESUB = "(although|altho|althou|though|tho|thou)";
+my $CONDISUB = "(if|if+|unless|unles|unlss)";
+my $USUALITY = "(hardly|hardli|hrdly|hrdli|regularly|repeatedly|continually|constantly|continuously|persistently|commonly|always|alwaiz|alwais|alwys|alwyz|alwayz|never|neva|nvr|nevr|nver|usually|usualy|usully|usuali|often|oftn|seldom|seldm|sldom|occasionally|ocasionally|occasionaly|ocasionaly|occasonally|rarely|rarly|sometimes|sumtimes|somtimes|smtimes|sometyms|sometymes|sumtyms|sumtymes|somtymes|somtyms|smtyms|smtymes|smtms)";
+my $PAST = "(didn't|didnt|wasn't|was|wasnt|were|werent|weren't|hadnt|hadn't|abode|abided|arose|awoke|awaked|bore|became|befell|begot|began|bgan|beheld|bent|bereft|besought|beseeched|beset|bestrode|betted|betook|bade|bound|bit|bled|blew|broke|brok|bred|brought|brout|built|burnt|burned|brned|busted|bought|caught|cght|caght|chid|chided|chose|chse|clung|came|crept|dealt|delt|deepfroze|deepfreezed|dug|dived|dove|did|drew|dreamt|dreamed|dremd|dreamd|drank|drove|drov|dwelt|dwelled|earned|earnt|ate|fell|fed|felt|fought|found|fled|flung|flew|forbore|forbade|forbad|forsaw|foresaw|forgot|frgot|forewent|forwent|forgave|frgave|forgav|frgav|4gave|forsook|foretold|fortold|4told|forswore|froze|got|gave|went|ground|grew|hamstrung|hung|hanged|had|hd|heard|herd|hid|held|kept|kpt|knelt|kneeled|knitted|knew|laid|led|leant|leaned|leapt|leaped|learnt|learned|lrnd|lrnt|left|lft|lent|lay|lit|lighted|lost|lst|made|mde|meant|ment|met|misdealt|misgave|misheard|mislaid|misled|misspelt|misspelled|mispelt|mispelled|mispeled|mispelt|misspent|mistook|mistok|misunderstood|mowed|mowd|outfought|outgrew|outran|outshone|overbore|overcame|ovacame|ovrcame|overdid|ovadid|ovrdid|overrate|overfed|overhung|overrode|overran|oversaw|overshot|overslept|overtook|ovatook|ovatok|ovrtook|ovrtok|overtok|overthrew|partook|paid|pleaded|pled|proved|provd|prved|quitted|rebound|rebuilt|redid|relaid|remade|rent|repaid|reran|restrung|retold|rethought|rewound|rewrote|ridded|rode|rang|rung|rose|ran|sawed|said|sed|saw|sought|sold|sld|sent|snt|sewed|sewd|shook|shuk|sheared|sheard|shone|shon|shined|shat|shod|shoed|shot|showed|showd|shredded|shrank|shrunk|shrived|shrove|sang|sung|sank|sunk|sat|slew|slept|slid|slung|slunk|smelt|smelled|smeled|smote|sowed|spoke|spok|sped|speeded|spelt|spelled|spent|spilt|spilled|spun|span|spat|spoilt|spoiled|sprang|sprung|stood|stole|stuck|stung|stank|stunk|strewed|strode|struck|strung|strove|strived|swore|sweated|swept|swelled|swam|swum|swung|took|taught|tore|told|tld|thought|thrived|throve|threw|thrust|trod|unbent|unbound|underbid|underwent|understood|undertook|underwrote|undid|unfroze|unmade|unwound|upheld|woke|waked|waylaid|wore|wove|weaved|wedded|wept|wetted|won|wound|withdrew|wivdrew|withheld|wivheld|withstood|wivstood|wrung|wrote|wrot)";
+my $IRREGULAR = "(beat|bet|bid|broadcast|brdcast|broadcst|burst|bust|cast|cost|cut|fit|forecast|hit|hurt|inset|knit|let|miscast|offset|outbid|overcast|put|quit|read|recast|reread|reset|rid|set|shed|shit|shut|slit|shred|spit|split|spread|sweat|telecast|upset|wed|wet)";
+my $PAST_PART = "(arisen|awoken|been|borne|beaten|befallen|begotten|begun|beheld|bent|bereft|bereaved|besought|beseeched|beset|bestridden|bestrid|bestrode|betted|betaken|bade|bidden|bound|bitten|bit|bled|blown|broken|bed|brought|built|burnt|burned|busted|bought|caught|chidden|chid|chided|chosen|cleft|cloven|cleaved|clung|come|crept|dealt|deepfrozen|deepfreezed|dug|dived|done|drawn|dreamt|dreamed|drunk|driven|dwelt|dwelled|earned|eaten|fallen|fed|felt|fought|found|fled|flung|flown|foreborne|forbidden|foreseen|foretold|forgotten|forgot|forgiven|forgone|forsaken|forsworn|frozen|gainsaid|got|gotten|given|gone|ground|grown|hamstrung|hung|had|heard|heaved|hove|hewn|hewed|hidden|hid|held|inset|kept|knelt|kneeled|knitted|known|laid|led|leant|leaned|leapt|leaped|learnt|leanred|left|lent|lain|lit|lighted|lost|made|meant|met|misdealt|misgiven|misheard|mislaid|misled|misspelt|misspelled|misspent|mistaken|misunderstood|mown|mowed|outbidden|outdone|outfought|outgrown|outshone|overborne|overdone|overeaten|overfed|overhung|overridden|overseen|overshot|overslept|overtaken|overthrown|partaken|paid|pleaded|pled|proved|proven|quitted|rebound|rebuilt|redone|relaid|remade|repaid|restrung|retold|rethought|rewound|rewritten|rid|ridded|ridden|rung|risen|sawn|sawed|said|seen|sought|sold|sent|sewn|sewed|shaken|shaved|shaven|shorn|sheared|shewn|shone|shined|shod|shoed|shot|shown|showed|shredded|shrunk|shrived|shriven|sung|sunk|sat|slain|slept|slid|slung|slunk|smelt|smelled|smitten|sown|sowed|spoken|sped|speeded|spelt|spelled|spent|spilt|spilled|spun|spat|spoilt|spoiled|sprung|stood|stolen|stuck|stung|stunk|strewn|strewed|stridden|strid|strode|struck|strunk|striven|strived|sworn|sweated|swept|swollen|swelled|swum|swung|taken|taught|torn|told|thought|thrived|thriven|thrown|trodden|trod|unbent|unbound|underbidden|undergone|understood|undertaken|underwritten|undone|unfrozen|unmade|unwound|upheld|woken|waked|waylaid|worn|woven|wedded|wept|wetted|won|wound|withdrawn|wthheld|withstood|wrung|written)";
+my $VERB_S = "(pls|amass|bless|boss|bypass|canvass|caress|cuss|depress|dress|impress|digress|regress|obsess|pass|possess|press|redress|sass|supress|surpass|toss|confess|focus|piss|hiss|kiss|mess|guess|floss|fuss|harass|express|dismiss|discuss|compress|assess|cross)";
+my $FSTPP = "(let's|i|i'd|id|im|i'm|i'll|ive|i've|mi|me|we|wi|we'd|we're|we'll|we've|weve|us|uz|my|our|miself|meself|myself|mislf|myslf|meslf|ourselves|ourslves|ourslvs|ourselfs|ourslfs|ourself|ourslf)";
+my $SNDPP = "(u|you|yu|you'd|yu'd|yud|u'd|ud|youll|you'll|yu'll|yull|u'll|ull|you've|youve|yu've|yuve|u've|uve|you're|youre|your|yur|yr|y're|yre|ur|u're|ure|y'all|yall|yourselves|yourselfs|yourslves|yourslf|yourselvs|yourself|yourslvs|yourslfs|yrselves|yrself|yrselfs|yrselvs|yrslfes|yrslves|yrslf|yrslvs|yrslf|urselves|urself|urselfs|urselvs|urslvs|urselvs|urslf|urslv)";
+my $THRDPP = "(they've|theyve|them|thm|she|shi|shi'd|she'd|shi'll|she'll|shi's|she's|shes|he|he'd|hed|he's|hes|he'll|they|thy|they'd|thy'd|thyd|theyd|they'll|thy'll|thyll|theyll|they're|theyre|her|hr|him|hm|his|their|himself|hmself|himslf|hmslf|herself|hrslf|herslf|hrself|themselves|thmselves|themslves|themselvs|thmselvs|thmslvs|thmslves)";
+my $INFVRBS = "(feel|feels|felt|feeling|feelin|hear|hears|heard|hearing|hearin|help|helped|helps|helping|helpin|hlp|hlped|hlps|hlping|hlpin|let|make|made|makes|making|makin|mke|see|saw|seeing|seein|sees|c|cing|cin|watch|watched|wtched|watches|watching|watchin|wtches|wtching|wtchin|wtch|wach|waches|waching|wachin|wached)";
+my $CNTRST_CONJ = "(though|thou|tho|alternatively|altrnatvely|alternativly|altrntvly|alternativley|but|conversely|conversly|cnversly|however|hwevr|hwever|howevr|despite|dspite|instead|insted|rather|ratha|nevertheless|nvrtheless|nevrtheless|nvertheless|nonetheless|nontheless|nonthelss|nonethless|nonethelss|notwithstanding|notwithstnding|notwithstandin|notwithstndin|otherwise|ovawise|othrwse|othrwise|otherwse|unlike|although|altho|althou|althgh|althogh|whereas|whreas|wereas|wheras)";
+my $RESULT_CONJ = "(consequently|consquntly|cnsquently|consquently|hence|therefore|therfore|threfore|therefre|there4|ther4|therefor|thus|accordingly|accrdinly|accordinly|acordingly|acordinly)";
+my $SUMMAT_CONJ = "(altogether|al2geva|altogeva|altogther|altogetha|altogther|altogtha|overall|overal|ovrall|generally|gnraly|generaly|genrally)";
+my $LIST_CONJ = "(eg|e\.g\.|furthermore|furthamore|furthermre|furthermor|furthamor|furthrmre|moreover|mrover|morover|moreova|morova|similarly|similrly|additionally|additionaly|aditionaly|ie|besides)";
+my $VERBNT = "(wont|wnt|wouldnt|wldnt|wuldnt|wudnt|havent|havnt|hvnt|'avnt|'avent|hvent|cant|cnt|dont|dnt|willnt|wllnt|wilnt|mightnt|mghtnt|mitent|maynt|mynt|shouldnt|shudnt|shldnt|shuldnt|shdnt|oughtnt|mustnt|musnt|mstnt|shallnt|shalnt|shant|shnt|shllnt|isnt|iznt|wasnt|wsnt|waznt|wosnt|woznt|wznt|arent|rnt|arnt|hadnt|hdnt|hasnt|hsnt|haznt|hznt|doesnt|dusnt|duznt|doznt|dosnt|dsnt|didnt|ddnt)";
+my $COPULAR = "(appear|appears|appeared|appearing|appearin|appearin'|feel|feels|felt|feeling|feelin|feelin'|get|got|gets|getting|gettin'|getting|go|going|goin|goin'|goes|went|keep|keeps|kept|keeping|keepin|keepin'|grow|grows|grown|growing|growin|growin'|lie|lies|lied|lying|lyin|lyin'|look|looks|looked|looking|lookin'|lookin|prove|proves|proving|provin|provin'|proved|remain|remains|remained|remaining|remainin|remainin'|resemble|resembles|resembling|resemblin|resemblin'|resembled|run|runs|ran|running|runnin|runnin'|seem|seems|seemed|seeming|seemin|seemin'|smell|smells|smelling|smellin|smellin'|smelt|smelled|sound|sounds|sounded|sounding|soundin|soundin'|stay|staying|stayin|stayin'|stays|stayed|taste|tastes|tasting|tastin|tastin'|tasted|turn|turned|turns|turning|turnin|turnin')";
+my $IT = "(it|it's|its|it'd|it'll|itll|itd|itself)";
+my $PROCONTRACT = "(what's|who's|where's|how's|why's|that's|thats|i'm|i've|ive|im|itd|it'd|it's|it'll|itll|i'd|id|i'll|we're|we'd|we'll|we've|she's|he's|shes|hes|she'd|he'd|she'll|he'll|they're|theyre|they'd|theyd|they'll|theyll|they've|theyve|it's|it'd|it'll|you're|youre|you'd|youd|you'll|youll|you've|youve|u've|uve|u'll|ull|u'd|ud|u're|ure|y're|yre|yu'd|yud|yu'll|yull|yu've|yuve|yu're|yure)";
+my $PROCONTRACTS = "(that's|thats|it's|its|she's|he's|shes|hes|tht's|dat's)";
+my $HAVEWOULDCONTRACT = "(i'd|you'd|we'd|they'd|she'd|he'd|yu'd|u'd|it'd)";
+my $BEPROCONTRACT = "(what's|who's|where's|why's|how's|i'm|im|we're|they're|theyre|you're|youre|u're|ure|y're|yre|yu're|yure)";
+my $WILLPROCONTRACT = "(i'll|it'll|she'll|he'll|they'll|you'll|yu'll|u'll|yull|youll|ull|theyll|itll)";
+my $HAVEPROCONTRACT = "(i've|ive|we've|weve|they've|theyve|you've|youve|u've|uve|yu've|yuve)";
+my $NOUNCOMP = "(assertion|conclusion|fact|knowledge|statement|claim|assumption|belief|idea|opinion|perception|possibility|rumour|suggestion|fear|ground|hope|reason|thought|view|comment|proposal|proposition|remark|report|requirement)";
+my $ASK = "(ask|asked|asks|asking|askin|aksin)";
+my $TELL = "(tell|told|tells|telling|tellin)";
+my $ABUSE = "(arsehole|assbag|asshole|assshole|asswad|bastard|bitch|bitchass|bitches|cockass|cockbite|cockface|cockknocker|cockwaffle|cuntface|cuntrag|dickbag|fucker|facker|fuckersucker|fackersucker|fuckhead|fackhead|fuckoff|fackoff|honkey|jagoff|mothafucka|mothafacka|mothafuckin|mothafackin|motherfuker|motherfacker|motherfucking|motherfacking|shithouse|skank|thundercunt|cockshit|cockburger|dickfuk|dickfak|dickfuker|dickfaker|cocknugget|cunt|fatass|cock|dickhead|dickwad|dickwod)";
+my $MISCALSWEAR = "(stfu|bs|assshit|shitting|bullshit|damn|fucks|facks|fcks|goddamn|goddamnit|hell|piss|shit|shitas|shitter|shittiest|shitty|shiz|shiznit|tf|clusterfuk|clusterfak)";
+my $BODYSWEAR = "(renob|anus|arse|ass|assbite|asses|axwound|bitchtits|bollocks|bollox|chesticle|choad|chode|clit|coochie|coochy|cooter|cunnie|cunthole|dicks|dookie|fanny|fuckhole|fackhole|fckhole|gooch|kooch|kootch|kunt|minge|muff|nutsack|panooch|pecker|penis|pissflaps|poon|poonami|poonany|poontang|punanny|punta|schlong|scrote|shithole|snatch|testicle|tit|tits|twatlips|vaj|vag|vagina|vajayjay|vjayjay|cunt|fatass|cock|cameltoe|pussies|pussy|cuntass|hardon|jap|dick|twats|twat|prick|boner|dickbeaters)";
+my $HOMOPHOBIC = "(asslick|assjacker|asshopper|dickmonger|assjabber|asspirate|assbandit|assbanger|asscracker|assf[au]?k|assf[au]?ker|assgoblin|asspirate|asssucker|buttpirate|buttf[au]?ka|buttf[au]?ker|carpetmuncher|cockf[au]?ker|cockmaster|cockmongler|cockmongruel|cockmuncher|cocksmith|cocksucker|cumjockey|dicktickler|dike|douchefag|dyke|fag|fagbag|fagf[au]?ker|faggit|faggot|faggotcock|fagtard|flamer|f[au]?ckbutt|fudgepacker|gay|gayass|gaybob|gaydo|gayf[au]?k|gayf[au]?kist|gaylord|gaytard|gaywad|homo|lesbian|lesbo|lezzie|mcfagget|muffdiver|penisbanger|penisf[au]?ker|penispuffer|polesmoker|queer|queerbait|queerhole|shitbreath|suckass|assmunch|assmuncher|unclef[au]?cker|homodumbshit|cuntlicker|feltch|f[au]?ckass|buttplug)";
+my $RACIST = "(assnigger|beaner|chinc|chink|coon|dago|deggo|gook|gringo|heeb|jigaboo|junglebunny|kike|kraut|kyke|mick|negro|nigaboo|nigga|niggas|nigger|niggers|niglet|paki|pollock|porchmonkey|ruski|sandnigga|sandnigger|spic|spick|spook|wetback|wop|ABC|ABCD|abid|abeed|abo|abbo|ann|annamite|ape|apple|arabush|armo|bamboula|banana|beaney|beni-oui-oui|bluegum|boche|bosche|bosch|boeotian|boerehater|boer-hater|bogtrotter|bog-trotter|bohunk|boong|bung|bong|boonga|boong|bunga|boonie|bootlip|bougnole|bounty|bozgor|brownie|buddhahead|bule|buffie|burrhead|burr-head|chee-chee|chi-chi|cheesehead|chernozhopy|chilote|ching-chong|chinaman|chingchong|churka|chonky|chunku|chunky|chunger|christkiller|choc-ice|cholo|chug|ciapity|ciapak|cina|coconut|coolie|coonass|coon-ass|crow|curry-muncher|cushi|kushi|dago|darkey|darky|darkie|dink|dogan|dogun|dothead|dunecoon|eightball|eskimo|eyetie|feuj|flip|FOB|fritz|frog|fuzzy-wuzzy|gable|gaijin|gin|ginjockey|golliwog|gook|gook-eye|gooky|gora|goy|goyim|goyum|greaseball|greaser|groid|gub|gubba|guizi|guido|guinea|ginzo|gweilo|gwailo|kwailo|gyopo|kyopo|gypsy|gypoo|gippo|gypo|gyppie|gyppy|gipp|hairyback|hajji|hadji|haji|halfbreed|half-breed|haole|heeb|hebe|hillbilly|honky|honkie|honkey|hori|hun|hunky|hymie|ikey|ike|iky|ikey-mo|ikeymo|indon|injun|jakun|jap|japie|yarpie|jerry|jigaboo|jiggabo|jigarooni|jijjiboo|zigabo|jig|jigg|jigga|jigger|jock|jocky|jockie|junglebunny|kaffir|kaffer|kaffir|kafir|kaffre|kuffar|caffer|caffre|kaffirboetie|kalar|kanaka|kanake|kano|katsap|kacap|kacapas|kebab|keling|kharkhuwa|khokhol|kimchi|labas|laowai|lebo|limey|lubra|lugan|mabuno|mahbuno|macaca|madrassi|majus|malakh-khor|malaun|malingsia|malingsial|malingsialan|mau-mau|mooncricket|moon-cricket|moskal|mulignan|mulignon|moolinyan|mzungu|nawar|nere|niakoue|niglet|nignog|nig-nog|nigger|niger|nig|nigor|nigra|nigre|nigar|niggur|nigga|niggah|nigguh|niggress|nigette|nip|nitchie|neche|neechee|neejee|nichi|nichiwa|nidge|nitchee|nitchy|northernmonkey|northern-monkey|nusayri|oreo|oven-dodger|paddy|paki|palagi|paleface|pancake|pancakeface|peckerwood|pepper|pepsi|pickaninny|piefke|pikey|piky|piker|pinoy|pinay|pocho|pocha|polack|pom|pohm|pommy|pommie|pommie-grant|pommiegrant|portagee|prairienigger|prairie-nigger|quashie|raghead|rastus|razakars|redlegs|redneck|redskin|roto|roundeye|sambo|sassenach|scandihoovian|seppo|septic|schvartse|schwartze|sheeny|sheepshagger|sheep-shagger|shelta|shiksa|shine|shiptar|siptar|shkije|shkutzim|shylock|skopianoi|skip|skippy|slope|slopehead|slopy|slopey|sloper|slopi|slopy|sloppy|smokedirish|soosmar-khor|sooty|southern-fairy|southern-faerie|soutpiel|spade|spearchucker|spic|spick|spik|spig|spigotty|spook|squarehead|squaw|squinty|tacohead|taffy|taff|taig|teague|teg|teig|tar-baby|teapot|teuchter|terrorist|thicklips|timbernigger|timber-nigger|tingtong|ting-tong|tinker|tynekere|tinkere|tynkere|tynkare|tynker|tenker|tinkar|tyncar|tinkard|tynkard|tincker|toad|towelhead|towel-head|tork-e khar|turco-albanian|turk|twinkie|ukrop|vatnik|WASP|wigger|whigger|wigga|whitetrash|white-trash|whitey|wog|yamyam|yam-yam|yank|yankee|yellow|yid|yuon|zip|zipperhead|cuck|guido)";
+my $SEXACT = "(dickweasel|blowjob|clitf[au]?k|cocksmoke|cocksmoker|cocksniffer|cum|cumbubble|cunnilingus|dicksneeze|dickjuice|dickmilk|dickslap|dicksucker|dicksucking|dildo|fellatio|f[au]?ck|f[au]?ckbutter|f[au]?ckin|f[au]?cking|handjob|humping|jerkoff|jizz|munging|pussylicking|queef|rimjob|skullf[au]?k|smeg|splooge|titf[au]?k|tittyf[au]?k|wank|wankjob|boner|dickbeaters|cuntlicker|feltch|f[au]?ckass|buttplug|cuntass|hardon|jap|f[au]?cked)";
+my $STUPIDITY = "(asshat|assclown|asshead|assmonkey|asswipe|clitface|cockmonkey|cocknose|dipshit|douche|dumass|dumbass|dumbf[au]?k|dumbshit|dumshit|f[au]?ckbag|f[au]?cknut|f[au]?cknutt|f[au]?ckstick|f[au]?cktard|f[au]?cktart|f[au]?ckwit|f[au]?ckwitt|jackass|jerk|jerkass|peckerhead|shitbrains|shithead|tard|twatwaffle|asshat|doochbag|douchebag|douchewaffle|lameass|dickweed|f[au]?ckbrain|shitcanned|dick|twats|twat|cock|homodumbshit)";
+my $PROMISCUITY = "(brotherf[au]?ker|cumguzzler|cumslut|cumtart|f[au]?ckboy|ho|hoe|puto|sk(e)?et|s(ch)?l(a)*g|slut|slutbag|whore|whorebag|whoreface|dickmonger|asshopper|cumdumpster|unclef[au]?cker)";
+my $PERSONALITYSWEAR = "(bitchy|cuntslut|dickhole|f[au]?ckwad|shitbag|shitbagger|shitcunt|shitdick|shitstain|dickwad|dickwod|prick|asslick|asshat|doochbag|douchebag|douchewaffle|lameass|dickweed|pussies|pussy|f[au]?ckup|assmunch|assmuncher|buttplug|asscock|assface|dickface|f[au]?ckface|lardass|shitface|dickhead|renob)";
+my $NEG = "(no|no+|neither|nor|\w+n't|not|\w+not|wont|wnt|wouldnt|wldnt|wuldnt|wudnt|havent|havnt|hvnt|'avnt|'avent|hvent|cant|cnt|dont|dnt|willnt|wllnt|wilnt|mightnt|mghtnt|mitent|maynt|mynt|shouldnt|shudnt|shldnt|shuldnt|shdnt|oughtnt|mustnt|musnt|mstnt|shallnt|shalnt|shant|shnt|shllnt|isnt|iznt|wasnt|wsnt|waznt|wosnt|woznt|wznt|arent|rnt|arnt|hadnt|hdnt|hasnt|hsnt|haznt|hznt|doesnt|dusnt|duznt|doznt|dosnt|dsnt|didnt|ddnt|na|na+|nah|na+h|nah+)";
+my $ANALNEG = "(\w+n't|\w+n't|not|\w+not|wont|wnt|wouldnt|wldnt|wuldnt|wudnt|havent|havnt|hvnt|'avnt|'avent|hvent|cannot|kannot|cnnot|knnot|cant|cnt|dont|dnt|willnt|wllnt|wilnt|mightnt|mghtnt|mitent|maynt|mynt|shouldnt|shudnt|shldnt|shuldnt|shdnt|oughtnt|mustnt|musnt|mstnt|shallnt|shalnt|shant|shnt|shllnt|isnt|iznt|wasnt|wsnt|waznt|wosnt|woznt|wznt|arent|rnt|arnt|hadnt|hdnt|hasnt|hsnt|haznt|hznt|doesnt|dusnt|duznt|doznt|dosnt|dsnt|didnt|ddnt)";
+my $ADJLY = "(beastly|brotherly|comely|costly|cowardly|deadly|elderly|fatherly|friendly|gentlemanly|gentlewomanly|ghastly|ghostly|godly|goodly|holy|homely|humanly|kingly|leisurely|likely|lively|lonely|lovely|lowly|maidenly|manly|masterly|matronly|miserly|motherly|nightly|nightly|painterly|poorly|priestly|princely|saintly|scholarly|shapely|silly|sisterly|timely|ugly|ungainly|unruly|unsightly|unseemly|unworldly|womanly|worldly)";
+my $ADJADV = "(yearly|weekly|monthly|fortnightly|daily)";
+my $SUBORDINATOR = "(when|whenever|where|wherever|however|how|after|although|because|before|if|inasmuch|lest|once|provided|since|supposing|than|though|till|unless|until|when|whenever|where|whereas|wherever|whether|which|while|who|whoever|because|cos|cause|b'cause|b'cos|'cos|bcos|bcause|becos|becoz|bcoz|bcuz|bcus|becaus|'cause|bcz|since|snce|sinc|while|whilst|whereupon|wherupon|whereas|wereas|wheras|whereby|wherby|wereby|although|altho|althou|though|tho|thou|if|if+|unless|unles|unlss|like|unlike)";
+my $SUBTHAT = "(now|providing|provided|supposing|considering|given|granting|granted|admitting|assuming|presuming|seeing|immediately|directly|so|in)";
+my $INTEDET = "(what|which|whose|wot|wht|wot|wat|whch)";
+my $INTEADV = "(when|wen|whn|where|wer|wher|whre|how|hw|why|y)";
+my $INTEPRO = "(when|wen|whn|where|wer|wher|how|hw|why|y)";
+my $RELPRO = "(who|whom|which|whch|that|dat|tht)";
+my $SUBORDINATORNORELPRO = "(when|whenever|where|wherever|however|how|after|although|because|before|if|inasmuch|lest|once|provided|since|supposing|than|though|till|unless|until|when|whenever|where|whereas|wherever|whether|while|whoever|because|cos|cause|b'cause|b'cos|'cos|bcos|bcause|becos|becoz|bcoz|bcuz|bcus|becaus|'cause|bcz|since|snce|sinc|while|whilst|whereupon|wherupon|whereas|wereas|wheras|whereby|wherby|wereby|although|altho|althou|though|tho|thou|if|if+|unless|unles|unlss|like)";
+my $RELDET = "(which|whch|whose|whse|whos)";
+my $RELADV = "(where|wher|wer|when|whn|wen|why|y)";
+my $PREPOSIT = "(about|abt|after|afta|around|arand|at|\@|by|bi|down|dwn|4|for|from|frm|into|in2|like|of|off|on|round|since|snce|sinc|than|to|2|towards|2wards|with|wiv|without|wivout)";
+my $VBFOREXIST = "(hv|av|havn't|havnt|hav|have|haf|hafe|haven't|havent|hafent|hafta|hafen't|hafnt|hafn't|haz|has|hasn't|hasnt|hazn't|haznt|had|hadn't|hadnt|happen|happened|happens|seem|seemed|seems|tend|tends|tended|use|used|appear|appears|appeared)";
+my $GIVE = "(give|gave|giving|given)";
+my $COPULAR2 = "(seem|seems|seemed|seeming|appear|appears|appeared|appearing|keeps|kept|keeping|keep|remain|remains|remained|remaining|stay|stays|stayed|staying|look|looks|looked|looking|feels|felt|feeling|feel|sound|sounds|sounded|sounding|smell|smells|smelt|smelled|smelling|taste|tastes|tasted|tasting|become|becomes|becoming|became|get|got|getting|gets|go|goes|went|going|grow|grows|grew|growing|prove|proves|proved|proving|come|came|comes|coming|turn|turns|turned|turning|end|ends|ending|ended|wind|wound|winds|winding)";
+my $GET = "(get|got|gets|getting|gettin'|getting)";
+
+
+
+################ FIXING THE TAGGER
+
+my @tweets = split /\n/, $text;				#split the file into individual tweets at every new line and store these in an array 
+
+my %table;
+
+my $filename = "mdatagtweets" . "$ARGV[1]" . ".txt";
+
+open OUT, ">$filename";									#declare the hash/table that you are going to store the counts in
+
+	for (my $i = 0; $i < @tweets; ++$i){
+
+		my @words = split /\s+/, $tweets[$i];		#split each tweet into words and store these in an array
+			
+			for (my $j = 0; $j < @words; ++$j){		#loop through each word
+
+					if ($words[$j] =~ /^\@/){								### in order to tag imperatives occurring at the beginning of Tweets we need to remove initial mentioning. To retrieve an initial mentioning count, use scriptformentions.txt
+						shift @words;	
+						--$j; 	
+					} else {
+						last;
+					}
+
+				}
+			
+				for (my $j = 0; $j < @words; ++$j){		#loop through each word
+
+##### fix Gimpel tagger on grammatical principles
+
+
+
+					if ($words[$j-2] =~ /_D/ && $words[$j-1] =~ /_A/ && $words[$j] =~ /_V/ && $words[$j+1] =~ /N/){
+						$words[$j] = $words[$j]  . "~ADJ";
+					}
+					if ($words[$j-2] =~ /\w+[^(which|that|dat|tht|whch)]_D/i && $words[$j-1] =~ /_R/ && $words[$j] =~ /_V/ && $words[$j+1] =~ /_N/){
+						$words[$j] = $words[$j]  . "~ADJ";
+					}
+					if ($words[$j-1] =~ /all_D/i && $words[$j] =~ /^($PAST|\w+ing|\w+ed|$PAST_PART)_V/ && $words[$j+1] =~ /_N/ && $words[$j+2] =~ /(_P|\._\,)/){
+						$words[$j] = $words[$j]  . "~VERB";
+					} else {
+						if ($words[$j-1] =~ /\w+[^(which|that|dat|tht|whch]_D/i && $words[$j] =~ /^($PAST|\w+ing|\w+ed|$PAST_PART)_V/ && $words[$j] !~ /\~VERB\?/ && $words[$j+1] =~ /_N/){
+							$words[$j] = $words[$j]  . "~ADJ";
+						}
+					}	
+					if ($words[$j-2] =~ /_O/ && $words[$j-1] =~ /^(all|both)_/i && $words[$j] =~ /_N/){
+						$words[$j] = $words[$j]  . "~VERB";
+					}
+					if ($words[$j] =~ /\w+[^that]_D/ && $words[$j+1] =~ /_A/ && $words[$j+2] =~ /_V/ && $words[$j+3] =~ /to_P/i && $words[$j+4] =~ /_R/ && $words[$j+5] =~ /_V/){
+						$words[$j+1] = $words[$j+1]  . "~NOUN";
+						$words[$j+2] = $words[$j+2]  . "~VERB";
+					} else {
+						if ($words[$j] =~ /\w+[^that]_D/ && $words[$j+1] =~ /_A/ && $words[$j+2] =~ /_V/ && $words[$j+3] =~ /to_P/i && $words[$j+4] =~ /_V/){
+							$words[$j+1] = $words[$j+1]  . "~NOUN";
+							$words[$j+2] = $words[$j+2]  . "~VERB";
+						} else {
+							if ($words[$j] =~ /\w+[^that]_D/ && $words[$j+1] =~ /_A/ && $words[$j+2] =~ /_V/ && $words[$j+3] =~ /_P/i){
+								$words[$j+2] = $words[$j+2]  . "~NOUN";
+							}
+						}
+					}	
+					if ($words[$j-2] =~ /_D/ && $words[$j-1] =~ /_A/ && $words[$j] =~ /_V/ && $words[$j+1] =~ /[\!\.\?]_,/){
+						$words[$j] = $words[$j]  . "~NOUN";
+					}
+					if ($words[$j-2] =~ /\._\,/ && $words[$j-1] =~ /_D/ && $words[$j] =~ /_A/ && $words[$j+1] =~ /_V/ && $words[$j+2] =~ /_R/ && $words[$j+3] =~ /_A/){
+						$words[$j] = $words[$j]  . "~NOUN";
+					}	
+					if ($words[$j-2] =~ /by_P/i && $words[$j-1] =~ /_D/ && $words[$j] =~ /_A/ && $words[$j+1] =~ /_V/){
+						$words[$j] = $words[$j]  . "~NOUN";
+					}
+					if ($words[$j-1] =~ /_D/ && $words[$j] =~ /_A/ && $words[$j+1] =~ /_V/ && $words[$j+2] =~ /_D/ && $words[$j+3] =~ /_R/ && $words[$j+4] =~ /_A/){
+						$words[$j] = $words[$j]  . "~NOUN";
+					}
+					if ($words[$j-1] =~ /^$DEFART\_/ && $words[$j] =~ /_A/ && $words[$j+1] =~ /_V/ && $words[$j+2] =~ /^$DEFART\_/ && $words[$j+3] =~ /_A/ && $words[$j+4] !~ /_N/){
+						$words[$j] = $words[$j]  . "~NOUN";
+					}
+					if ($words[$j-4] =~ /^$DEFART\_/ && $words[$j-3] =~ /_A/ && $words[$j-2] =~ /_V/ && $words[$j-1] =~ /^$DEFART\_/i && $words[$j] =~ /_A/ && $words[$j+1] !~ /_N/){
+						$words[$j] = $words[$j]  . "~NOUN";
+					}
+					if ($words[$j-1] =~ /_D/ && $words[$j] =~ /_A/ && $words[$j+1] =~ /_V/ && $words[$j+2] =~ /_R/ && $words[$j+3] =~ /_D/ && $words[$j+4] =~ /_A/){
+						$words[$j] = $words[$j]  . "~NOUN";
+					}
+					if ($words[$j-5] =~ /_D/ && $words[$j-4] =~ /_A/ && $words[$j-3] =~ /_V/ && $words[$j-2] =~ /_R/ && $words[$j-1] =~ /_D/ && $words[$j] =~ /_A/){
+						$words[$j] = $words[$j]  . "~NOUN??";		#this could not be a noun so need to check
+					}
+						
+					if ($words[$j-1] =~ /^$RELDET\_/i && $words[$j] =~ /_N/ && $words[$j+1] =~ /_N/i && $words[$j+2] =~ /_V/){
+						$words[$j] = $words[$j]  . "~NOUN";
+					} else {
+						if ($words[$j-2] =~ /^$RELDET\_/i && $words[$j-1] =~ /_N/ && $words[$j] =~ /_N/ && $words[$j+1] =~ /_D/i){
+							$words[$j] = $words[$j]  . "~VERB";
+						} else {
+							if ($words[$j-1] =~ /^$RELDET\_/i && $words[$j] =~ /_N/ && $words[$j+1] =~ /_(Z|\@|\^)/){
+								$words[$j] = $words[$j]  . "~VERB";
+								} else {
+									if ($words[$j-1] =~ /^$RELDET\_/i && $words[$j] =~ /_N/ && $words[$j] !~ /~NOUN/ && $words[$j+1] !~ /_N_\~VERB/){
+										$words[$j] = $words[$j]  . "~NOUN";
+									} else {
+										if ($words[$j-2] =~ /(\~NOMIN|_N)/ && $words[$j-1] =~ /^$RELDET\_/i && $words[$j] =~ /_N/ && $words[$j+1] =~ /_N/ && $words[$j+2] =~ /_P/){
+											$words[$j] = $words[$j]  . "~VERB";
+											} else {
+												if ($words[$j-1] =~ /^$RELDET\_/i && $words[$j] =~ /_N/ && $words[$j] !~ /~NOUN/ && $words[$j+1] =~ /(\w+ing_V|_\$|_Z|_N)/i){
+													$words[$j] = $words[$j]  . "~VERB";
+												}
+											}	
+										}
+									}	
+								}	
+							}	
+
+					if ($words[$j-2] !~ /_(D|P|A|\&|V|\^|Z|R)/ && $words[$j-2] !~ /\:_,/ && $words[$j-1] =~ /_N/ && $words[$j] =~ /_N/ && $words[$j+1] =~ /^(that|the)_D/ && $words[$j+1] !~ /(which|last|next|lst|nxt|this)_/i && $words[$j+2] !~ /^(weekend|morning|mornin|afternoon|evening|night|nite|year|yr|month|mnth|week|January|Jan|February|Feb|March|April|May|June|July|August|Aug|Sepetember|Sep|October|Oct|November|Nov|December|Dec|Monday|Mon|Tuesday|Tues|Wednesday|Wed|Thursday|Thurs|Friday|Fri|Saturday|Sat|Sunday|Sun)_/i && $words[$j+2] =~ /_N/){ ##if the _D and _N = time adverbial (i.e. this week, this morning, this year. this weekned, each week, every week, some day - then ignore)
+						$words[$j] = $words[$j]  . "~VERB";
+					}
+
+
+##### find capitalisation and punctuation
+
+					if ($words[$j] !~ /_(U|\@)/ && $words[$j] =~ /^[^_]*[A-Z]{2,}/){
+						$words[$j] = $words[$j]  . "~CAPS";
+					}
+					if ($words[$j] =~ /_\,/){
+						$words[$j] = $words[$j]  . "~PUNCT";
+					}
+					if ($words[$j] =~ /(\'|\")_[RVPDQGN\^\,]/){
+						$words[$j] = $words[$j]  . "~QUOT";
+					}
+					if ($words[$j] =~ /[.]*\!+[.]*_,/){
+						$words[$j] = $words[$j]  . "~EXCLAM";
+					}
+					if ($words[$j] =~ /[.]*\?+[.]*_,/){
+						$words[$j] = $words[$j]  . "~QUES";
+					}
+					if ($words[$j] =~ /\.\.\._(,|\~|Q)/){
+						$words[$j] = $words[$j]  . "~ELIPS";
+					}
+					if ($words[$j] =~ /\(_,/){
+						$words[$j] = $words[$j]  . "~BRACKET";
+					}
+					if ($words[$j] =~ /\)_,/){
+						$words[$j] = $words[$j]  . "~BRACKET";
+					}
+					if ($words[$j] =~ /,_,/){
+						$words[$j] = $words[$j]  . "~COMMA"
+					}
+					if ($words[$j] =~ /;_,/){
+						$words[$j] = $words[$j]  . "~SMCOLON"
+					}
+					if ($words[$j] =~ /:_[,QG]/){
+						$words[$j] = $words[$j]  . "~COLON"
+					}
+					if ($words[$j] =~ /\._,/ && $words[$j] !~ /\~ELIPS/){
+						$words[$j] = $words[$j]  . "~FULSTOP"
+					}
+
+					if ($words[$j] =~ /_U/){
+						$words[$j] = $words[$j]  . "~URL";
+					}
+					if ($words[$j] =~ /_E/){
+						$words[$j] = $words[$j]  . "~EMOTICON";
+					}
+					if ($words[$j] =~ /_\@/){
+						$words[$j] = $words[$j]  . "~MENTION";
+					}
+					if ($words[$j] =~ /^\#/){
+						$words[$j] = $words[$j]  . "~HASHTAG";
+					} else {
+						if ($words[$j] =~ /_\#/ && $words[$j] !~ /\~HASHTAG/){
+							$words[$j] = $words[$j]  . "~HASHTAG";
+						}
+					}
+							
+###### find to adjective complementiser, preposition to and infinitive)
+					if ($words[$j-1] =~ /(_A|\~ADJ)/ && $words[$j-1] =~ /~ADJ/ && $words[$j] =~ /^(to|2)_/ && $words[$j+1] =~ /\w+[^(ing)]_V/){
+						$words[$j] = $words[$j]  . "~TOADJCOMP";
+					} else {
+						if ($words[$j-1] =~ /(_A|\~ADJ)/ && $words[$j] =~ /^(2|to)_/i && $words[$j+1] =~ /^(bring|sing|ring|string|swing|sting|wing|wring|fling|ding|ping|sling)_V/i){
+							$words[$j] = $words[$j]  . "~TOADJCOMP";
+						} else {
+							if ($words[$j-1] =~ /(_A|\~ADJ)/ && $words[$j-1] =~ /~ADJ/ && $words[$j] =~ /^(to|2)_/ && $words[$j+1] =~ /_R/ && $words[$j+2] =~ /\w+[^(ing)]_V/){
+								$words[$j] = $words[$j]  . "~TOADJCOMP";
+							} else {
+								if ($words[$j-1] =~ /(_A|\~ADJ)/ && $words[$j] =~ /^(2|to)_/i && $words[$j+1] =~ /_R/ && $words[$j+2] =~ /^(bring|sing|ring|string|swing|sting|wing|wring|fling|ding|ping|sling)_V/i){
+									$words[$j] = $words[$j]  . "~TOADJCOMP";
+								} else {
+									if ($words[$j-1] =~ /(_A|\~ADJ)/ && $words[$j-1] =~ /~ADJ/ && $words[$j] =~ /^(to|2)_/ && $words[$j+1] =~ /_R/ && $words[$j+2] =~ /_R/ && $words[$j+3] =~ /\w+[^(ing)]_V/){
+										$words[$j] = $words[$j]  . "~TOADJCOMP";
+									} else {
+										if ($words[$j-1] =~ /(_A|\~ADJ)/ && $words[$j] =~ /^(2|to)_/i && $words[$j+1] =~ /_R/ && $words[$j+2] =~ /_R/ && $words[$j+3] =~ /^(bring|sing|ring|string|swing|sting|wing|wring|fling|ding|ping|sling)_V/i){
+											$words[$j] = $words[$j]  . "~TOADJCOMP";
+										}
+									}
+								}
+							}				
+						}
+					}	
+					if ($words[$j] =~ /^(2|to)_/i && $words[$j] !~ /\~TOADJCOMP/ && $words[$j+1] =~ /^(bring|sing|ring|string|swing|sting|wing|wring|fling|ding|ping|sling)_V/i){
+						$words[$j] = $words[$j]  . "~INFINITIVE";
+					} else {
+						if ($words[$j] =~ /^(2|to)_/i && $words[$j] !~ /\~TOADJCOMP/ && $words[$j+1] =~ /\w+ing_V/i){
+							$words[$j] = $words[$j]  . "~PREP";
+						} else {
+							if ($words[$j] =~ /^(2|to)_/i && $words[$j] !~ /\~TOADJCOMP/ && $words[$j+1] =~ /\w+_V/i && $words[$j+1] !~ /\w+ing_V/){
+								$words[$j] = $words[$j]  . "~INFINITIVE";
+							}
+						}	
+					}
+					if ($words[$j] =~ /^(2|to)_/i && $words[$j] !~ /\~TOADJCOMP/ && $words[$j+1] =~ /_R/i && $words[$j+2] =~ /^(bring|sing|ring|string|swing|sting|wing|wring|fling|ding|ping|sling)_V/i){
+						$words[$j] = $words[$j]  . "~SPLINFINITIVE";
+					} else {
+						if ($words[$j] =~ /^(2|to)_/i && $words[$j] !~ /\~TOADJCOMP/ && $words[$j+1] =~ /_R/i && $words[$j+2] =~ /_R/ && $words[$j+3] =~ /^(bring|sing|ring|string|swing|sting|wing|wring|fling|ding|ping|sling)_V/i){
+							$words[$j] = $words[$j]  . "~SPLINFINITIVE";
+						} else {	
+							if ($words[$j] =~ /^(2|to)_/i && $words[$j] !~ /\~TOADJCOMP/ && $words[$j+1] =~ /_R/i && $words[$j+2] =~ /\w+ing_V/i){
+								$words[$j] = $words[$j]  . "~PREP";
+							} else {
+								if ($words[$j] =~ /^(2|to)_/i && $words[$j] !~ /\~TOADJCOMP/ && $words[$j+1] =~ /_R/i && $words[$j+2] =~ /\w+_V/i && $words[$j+2] !~ /\w+ing_V/){
+									$words[$j] = $words[$j]  . "~SPLINFINITIVE";
+								}	
+							}
+						}
+					}		
+
+##### find 'as' and subordinators
+					if ($words[$j] =~ /^according_/i && $words[$j+1] =~ /^to_/i){
+						$words[$j] = $words[$j]  . "~PREP";
+					}
+				
+					if ($words[$j] =~ /^as_/i && $words[$j+1] =~ /(_A|_R)/ && $words[$j+2] =~ /^as_/i){
+						$words[$j] = $words[$j]  . "~ADV";
+					}
+					if ($words[$j-2] =~ /^as_/i && $words[$j-1] =~ /(_A|_R)/ && $words[$j] =~ /^as_/i){
+						$words[$j] = $words[$j]  . "~SUBORDINATOR";
+					}
+					if ($words[$j] =~ /^as_/i && $words[$j] !~ /\~SUBORDINATOR/ && $words[$j+1] =~ /_O/ && $words[$j+2] =~ /_V/){
+						$words[$j] = $words[$j]  . "~SUBORDINATOR";
+					}
+					if ($words[$j] =~ /^as_/i && $words[$j] !~ /\~SUBORDINATOR/ && $words[$j+1] =~ /_D/ && $words[$j+2] =~ /_(\^|N)/ && $words[$j+3] =~ /_V/){
+						$words[$j] = $words[$j]  . "~SUBORDINATOR";
+					}
+					if ($words[$j] =~ /^as_/i && $words[$j+1] =~ /_L/){
+						$words[$j] = $words[$j]  . "~SUBORDINATOR";
+					}
+					if ($words[$j] =~ /^as_/i && $words[$j+1] =~ /_(N|\^|\@)/ && $words[$j+2] =~ /_V/){
+						$words[$j] = $words[$j]  . "~SUBORDINATOR";
+					}
+					if ($words[$j] =~ /^as_/i && $words[$j+1] =~ /_A/ && $words[$j+2] =~ /_N/ && $words[$j+3] =~ /_V/){
+						$words[$j] = $words[$j]  . "~SUBORDINATOR";
+					}
+					if ($words[$j] =~ /^as_/i && $words[$j+1] =~ /_N/ && $words[$j+2] =~ /_N/ && $words[$j+3] =~ /_V/){
+						$words[$j] = $words[$j]  . "~SUBORDINATOR";
+					}
+					if ($words[$j] =~ /^as_/i && $words[$j+1] =~ /_\^/ && $words[$j+2] =~ /_\^/ && $words[$j+3] =~ /_V/){
+						$words[$j] = $words[$j]  . "~SUBORDINATOR";
+					}
+					if ($words[$j] =~ /^as_/i && $words[$j+1] =~ /_N/ && $words[$j+2] =~ /_\^/ && $words[$j+3] =~ /_V/){
+						$words[$j] = $words[$j]  . "~SUBORDINATOR";
+					}
+					if ($words[$j] =~ /^as_/i && $words[$j+1] =~ /_N/ && $words[$j+2] =~ /_R/ && $words[$j+3] =~ /_V/){
+						$words[$j] = $words[$j]  . "~SUBORDINATOR";
+					}
+					if ($words[$j] =~ /^as_/i && $words[$j+1] =~ /_A/ && $words[$j+2] =~ /_N/ && $words[$j+3] =~ /_R/ && $words[$j+4] =~ /_V/){
+						$words[$j] = $words[$j]  . "~SUBORDINATOR";
+					}
+					if ($words[$j] =~ /^as_/i && $words[$j+1] =~ /_N/ && $words[$j+2] =~ /_N/ && $words[$j+3] =~ /_R/ && $words[$j+4] =~ /_V/){
+						$words[$j] = $words[$j]  . "~SUBORDINATOR";
+					}
+					if ($words[$j] =~ /^as_/i && $words[$j+1] =~ /_\^/ && $words[$j+2] =~ /_\^/ && $words[$j+3] =~ /_R/ && $words[$j+4] =~ /_V/){
+						$words[$j] = $words[$j]  . "~SUBORDINATOR";
+					}
+					if ($words[$j] =~ /^as_/i && $words[$j+1] =~ /_N/ && $words[$j+2] =~ /_\^/ && $words[$j+3] =~ /_R/ && $words[$j+4] =~ /_V/){
+						$words[$j] = $words[$j]  . "~SUBORDINATOR";
+					}
+
+					if ($words[$j] =~ /^as_/i && $words[$j+1] =~ /_L/){
+						$words[$j] = $words[$j]  . "~SUBORDINATOR";
+					}
+					if ($words[$j] =~ /^so_P/i){
+						$words[$j] = $words[$j]  . "~SUBORDINATOR";
+					}
+
+					if ($words[$j] =~ /^$SUBORDINATOR\_/i && $words[$j+1] =~ /_O/ && $words[$j+2] =~ /_V/){
+						$words[$j] = $words[$j]  . "~SUBORDINATOR";
+					}
+					if ($words[$j] =~ /^$SUBORDINATOR\_/i && $words[$j+1] =~ /_O/ && $words[$j+2] =~ /^(all|both)_/i && $words[$j+3] =~ /\~VERB/){
+						$words[$j] = $words[$j]  . "~SUBORDINATOR";
+					}
+					if ($words[$j] =~ /^$SUBORDINATOR\_/i && $words[$j+1] =~ /_O/ && $words[$j+2] =~ /_R/ && $words[$j+3] =~ /_R/ && $words[$j+4] =~ /_V/){
+						$words[$j] = $words[$j]  . "~SUBORDINATOR";
+					}
+					if ($words[$j] =~ /^$SUBORDINATOR\_/i && $words[$j+1] =~ /_O/ && $words[$j+2] =~ /_R/ && $words[$j+3] =~ /_V/){
+						$words[$j] = $words[$j]  . "~SUBORDINATOR";
+					}
+					if ($words[$j] =~ /^$SUBORDINATOR\_/i && $words[$j+1] =~ /_L/){
+						$words[$j] = $words[$j]  . "~SUBORDINATOR";
+					}
+					if ($words[$j] =~ /^$SUBORDINATOR\_/i && $words[$j+1] =~ /_(N|\@|\^)/ && $words[$j+2] =~ /_V/){
+						$words[$j] = $words[$j]  . "~SUBORDINATOR";
+					}
+					if ($words[$j] =~ /^$SUBORDINATOR\_/i && $words[$j+1] =~ /_D/ && $words[$j+2] =~ /_(N|\@|\^)/ && $words[$j+3] =~ /_V/){
+						$words[$j] = $words[$j]  . "~SUBORDINATOR";
+					}
+					if ($words[$j] =~ /^$SUBORDINATOR\_/i && $words[$j+1] =~ /_A/ && $words[$j+2] =~ /_N/ && $words[$j+3] =~ /_V/){
+						$words[$j] = $words[$j]  . "~SUBORDINATOR";
+					}
+					if ($words[$j] =~ /^$SUBORDINATOR\_/i && $words[$j+1] =~ /_N/ && $words[$j+2] =~ /_N/ && $words[$j+3] =~ /_V/){
+						$words[$j] = $words[$j]  . "~SUBORDINATOR";
+					}
+					if ($words[$j] =~ /^$SUBORDINATOR\_/i && $words[$j+1] =~ /_\^/ && $words[$j+2] =~ /_\^/ && $words[$j+3] =~ /_V/){
+						$words[$j] = $words[$j]  . "~SUBORDINATOR";
+					}
+					if ($words[$j] =~ /^$SUBORDINATOR\_/i && $words[$j+1] =~ /_N/ && $words[$j+2] =~ /_\^/ && $words[$j+3] =~ /_V/){
+						$words[$j] = $words[$j]  . "~SUBORDINATOR";
+					}
+					if ($words[$j] =~ /^$SUBORDINATOR\_/i && $words[$j+1] =~ /_(N|\@|\^)/ && $words[$j+2] =~ /_R/ && $words[$j+3] =~ /_V/){
+						$words[$j] = $words[$j]  . "~SUBORDINATOR";
+					}
+					if ($words[$j] =~ /^$SUBORDINATOR\_/i && $words[$j+1] =~ /_D/ && $words[$j+2] =~ /_(N|\@|\^)/ && $words[$j+3] =~ /_R/ && $words[$j+4] =~ /_V/){
+						$words[$j] = $words[$j]  . "~SUBORDINATOR";
+					}
+					if ($words[$j] =~ /^$SUBORDINATOR\_/i && $words[$j+1] =~ /_D/ && $words[$j+2] =~ /_(N|\@|\^|A)/ && $words[$j+3] =~ /_N/ && $words[$j+4] =~ /_R/ && $words[$j+5] =~ /_V/){
+						$words[$j] = $words[$j]  . "~SUBORDINATOR";
+					}
+					if ($words[$j] =~ /^$SUBORDINATOR\_/i && $words[$j+1] =~ /_D/ && $words[$j+2] =~ /_(N|\@|\^|A)/ && $words[$j+3] =~ /_N/ && $words[$j+4] =~ /_V/){
+						$words[$j] = $words[$j]  . "~SUBORDINATOR";
+					}
+					if ($words[$j] =~ /^$SUBORDINATOR\_/i && $words[$j+1] =~ /_A/ && $words[$j+2] =~ /_N/ && $words[$j+3] =~ /_R/ && $words[$j+4] =~ /_V/){
+						$words[$j] = $words[$j]  . "~SUBORDINATOR";
+					}
+					if ($words[$j] =~ /^$SUBORDINATOR\_/i && $words[$j+1] =~ /_N/ && $words[$j+2] =~ /_N/ && $words[$j+3] =~ /_R/ && $words[$j+4] =~ /_V/){
+						$words[$j] = $words[$j]  . "~SUBORDINATOR";
+					}
+					if ($words[$j] =~ /^$SUBORDINATOR\_/i && $words[$j+1] =~ /_\^/ && $words[$j+2] =~ /_\^/ && $words[$j+3] =~ /_R/ && $words[$j+4] =~ /_V/){
+						$words[$j] = $words[$j]  . "~SUBORDINATOR";
+					}
+					if ($words[$j] =~ /^$SUBORDINATOR\_/i && $words[$j+1] =~ /_N/ && $words[$j+2] =~ /_\^/ && $words[$j+3] =~ /_R/ && $words[$j+4] =~ /_V/){
+						$words[$j] = $words[$j]  . "~SUBORDINATOR";
+					}
+					if ($words[$j] =~ /^$SUBTHAT\_/i && $words[$j] !~ /\~SUBORDINATOR/ && $words[$j+1] =~ /^(that|tht|dat)_/i && $words[$j+2] =~ /_L/){
+						$words[$j] = $words[$j]  . "~SUBORDINATOR";
+					}
+					if ($words[$j] =~ /^$SUBTHAT\_/i && $words[$j] !~ /\~SUBORDINATOR/ && $words[$j+1] =~ /^(that|tht|dat)_/i && $words[$j+2] =~ /_O/ && $words[$j+3] =~ /_V/){
+						$words[$j] = $words[$j]  . "~SUBORDINATOR";
+					}
+					if ($words[$j] =~ /^$SUBTHAT\_/i && $words[$j] !~ /\~SUBORDINATOR/ && $words[$j+1] =~ /^(that|tht|dat)_/i && $words[$j+2] =~ /_(\^|N)/ && $words[$j+3] =~ /_V/){
+						$words[$j] = $words[$j]  . "~SUBORDINATOR";
+					}
+					if ($words[$j] =~ /^$SUBTHAT\_/i && $words[$j] !~ /\~SUBORDINATOR/ && $words[$j+1] =~ /^(that|tht|dat)_/i && $words[$j+2] =~ /_D/ && $words[$j+3] =~ /_N/ && $words[$j+4] =~ /_V/){
+						$words[$j] = $words[$j]  . "~SUBORDINATOR";
+					}
+					if ($words[$j] =~ /^$SUBTHAT\_/i && $words[$j] !~ /(^in_|\~SUBORDINATOR)/ && $words[$j+1] =~ /^(that|tht|dat)_/i){
+						$words[$j] = $words[$j]  . "~SUBORDINATOR";
+					}
+					if ($words[$j-1] =~ /_A/ && $words[$j] =~ /^(as|az|than|thn|like)\_/i && $words[$j] !~ /\~PREP/ && $words[$j+1] =~ /_V/){
+						$words[$j] = $words[$j]  . "~SUBORDINATOR";
+					}
+					if ($words[$j] =~ /^(even|evn)_/i && $words[$j+1] =~ /^(though|tho|thou|thogh)_/i){
+						$words[$j] = $words[$j]  . "~SUBORDINATOR";
+					}
+
+
+
+
+##### find complement clauses and relative clauses 
+					
+					if ($words[$j-2] !~ /_D/ && $words[$j-1] =~ /_A_\~ADJ/ && $words[$j] =~ /^(that|tht|dat)_/){
+						$words[$j] = $words[$j]  . "~THATADJCOMP";
+					}
+					if ($words[$j-2] =~ /_D/ && $words[$j-1] =~ /^$NOUNCOMP\_N/i && $words[$j] =~ /^(that|dat|tht)_/i){
+						$words[$j] = $words[$j] . "~THATNOUNCOMP";
+					}
+					if ($words[$j-1] =~ /^($PUBV|$SUAV|$PRVV|$STANCEVRBS|$PERCEPTVRBS)\_V/i && $words[$j] =~ /^(that|tht|dat)_/i && $words[$j] !~ /\~THATNOUNCOMP/ && $words[$j+1] !~ /_(&|V|\,)/i){
+						$words[$j] = $words[$j]  . "~THATVCOMP";
+					}
+					if ($words[$j-3] =~ /^($PUBV|$SUAV|$PRVV|$STANCEVRBS|$PERCEPTVRBS)\_V/i && $words[$j-2] =~ /_R/ && $words[$j-1] =~ /_R/ && $words[$j] =~ /^(that|tht|dat)_/i && $words[$j] !~ /\~THATNOUNCOMP/ && $words[$j+1] !~ /_(&|V|\,)/i){
+						$words[$j] = $words[$j]  . "~THATVCOMP";
+					}
+					if ($words[$j-2] =~ /^($PUBV|$SUAV|$PRVV|$STANCEVRBS|$PERCEPTVRBS)\_V/i && $words[$j-1] =~ /_R/ && $words[$j] =~ /^(that|tht|dat)_/i && $words[$j] !~ /\~THATNOUNCOMP/ && $words[$j+1] !~ /_(&|V|\,)/i){
+						$words[$j] = $words[$j]  . "~THATVCOMP";
+					}
+					if ($words[$j-3] =~ /^($PUBV|$SUAV|$PRVV|$STANCEVRBS|$PERCEPTVRBS)\_V/i && $words[$j-2] =~ /,_,/ && $words[$j-1] =~ /_R/ && $words[$j] =~ /^(that|tht|dat)_/i && $words[$j] !~ /\~THATNOUNCOMP/ && $words[$j+1] !~ /_(&|V|\,)/i){
+						$words[$j] = $words[$j]  . "~THATVCOMP";
+					}
+					if ($words[$j-4] =~ /^($PUBV|$SUAV|$PRVV|$STANCEVRBS|$PERCEPTVRBS)\_V/i && $words[$j-3] =~ /,_,/ && $words[$j-2] =~ /_R/ && $words[$j-1] =~ /_R/ && $words[$j] =~ /^(that|tht|dat)_/i && $words[$j] !~ /\~THATNOUNCOMP/ && $words[$j+1] !~ /_(&|V|\,)/i){
+						$words[$j] = $words[$j]  . "~THATVCOMP";
+					}
+					if ($words[$j-2] =~ /^($PUBV|$SUAV|$PRVV|$STANCEVRBS|$PERCEPTVRBS)\_V/i && $words[$j-1] =~ /,_,/ && $words[$j] =~ /^(that|tht|dat)_/i && $words[$j] !~ /\~THATNOUNCOMP/ && $words[$j+1] !~ /_(&|V|\,)/i){
+						$words[$j] = $words[$j]  . "~THATVCOMP";
+					}
+					if ($words[$j-1] =~ /^(and|nor|or|but|also)_(&|P)/i && $words[$j] =~ /^(that|tht|dat)_/i && $words[$j] !~ /\~THATNOUNCOMP/ && $words[$j+1] =~ /^($EXIST\_|\w+_D|\w+_\^|\w+_O|$TITLE)/i){
+						$words[$j] = $words[$j]  . "~THATVCOMP";
+					}
+					if ($words[$j-2] =~ /^($PUBV|$SUAV|$PRVV|$STANCEVRBS|$PERCEPTVRBS)\_V/i && $words[$j-1] =~ /,_,/ && $words[$j] =~ /^(that|tht|dat)_/i && $words[$j] !~ /\~THATNOUNCOMP/ && $words[$j+1] =~ /^($EXIST\_|\w+_D|\w+_\^|\w+_O|$TITLE)/i){
+						$words[$j] = $words[$j]  . "~THATVCOMP";
+					}
+					if ($words[$j-5] =~ /^($PUBV|$PRVV|$SUAV|$STANCEVRBS|$PERCEPTVRBS)\_V/i && $words[$j-4] =~ /,_,/ && $words[$j-3] =~ /_P/ && $words[$j-2] !~ /_(N|V)/ && $words[$j] =~ /^(that|dat|tht)_/ && $words[$j] !~ /\~THATNOUNCOMP/ && $words[$j] !~ /(\~THATADJCOMP|\~THATVCOMP)/ && $words[$j+1] !~ /_V/){
+						$words[$j] = $words[$j]  . "~THATVCOMP";
+					}
+					if ($words[$j-5] =~ /^($PUBV|$PRVV|$SUAV|$STANCEVRBS|$PERCEPTVRBS)\_V/i && $words[$j-4] =~ /_P/ && $words[$j-3] !~ /_(V|N)/ && $words[$j] =~ /^(that|dat|tht)_/ && $words[$j] !~ /(\~THATADJCOMP|\~THATVCOMP|\~THATNOUNCOMP)/ && $words[$j+1] !~ /(_V|\._,|_,)/){
+						$words[$j] = $words[$j]  . "~THATVCOMP";
+					}
+					if ($words[$j-6] =~ /^($PUBV|$PRVV|$SUAV|$STANCEVRBS|$PERCEPTVRBS)\_V/i && $words[$j-5] =~ /,_,/ && $words[$j-4] =~ /_P/ && $words[$j-3] !~ /_(N|V)/ && $words[$j] =~ /^(that|dat|tht)_/ && $words[$j] !~ /(\~THATADJCOMP|\~THATVCOMP|\~THATNOUNCOMP)/ && $words[$j+1] !~ /_V/){
+						$words[$j] = $words[$j]  . "~THATVCOMP";
+					}
+					if ($words[$j-6] =~ /^($PUBV|$PRVV|$SUAV|$STANCEVRBS|$PERCEPTVRBS)\_V/i && $words[$j-5] =~ /_P/ && $words[$j-4] !~ /_N/ && $words[$j] =~ /^(that|dat|tht)_/ && $words[$j] !~ /(\~THATADJCOMP|\~THATVCOMP|\~THATNOUNCOMP)/ && $words[$j+1] !~ /_V/){
+						$words[$j] = $words[$j]  . "~THATVCOMP";
+					}
+					if ($words[$j-7] =~ /^($PUBV|$PRVV|$SUAV|$STANCEVRBS|$PERCEPTVRBS)\_V/i && $words[$j-6] =~ /,_,/ && $words[$j-5] =~ /_P/ && $words[$j-4] !~ /_(N|V)/ && $words[$j] =~ /^(that|dat|tht)_/ && $words[$j] !~ /(\~THATADJCOMP|\~THATVCOMP|\~THATNOUNCOMP)/ && $words[$j+1] !~ /_V/){
+						$words[$j] = $words[$j]  . "~THATVCOMP";
+					}
+					if ($words[$j-7] =~ /^($PUBV|$PRVV|$SUAV|$STANCEVRBS|$PERCEPTVRBS)\_V/i && $words[$j-6] =~ /_P/ && $words[$j-5] !~ /_(N|V)/ && $words[$j] =~ /^(that|dat|tht)_/ && $words[$j] !~ /(\~THATADJCOMP|\~THATVCOMP|\~THATNOUNCOMP)/ && $words[$j+1] !~ /_V/){
+						$words[$j] = $words[$j]  . "~THATVCOMP";
+					}
+					if ($words[$j-8] =~ /^($PUBV|$PRVV|$SUAV|$STANCEVRBS|$PERCEPTVRBS)\_V/i && $words[$j-7] =~ /,_,/ && $words[$j-6] =~ /_P/ && $words[$j-5] !~ /_(N|V)/ && $words[$j] =~ /^(that|dat|tht)_/ && $words[$j] !~ /(\~THATADJCOMP|\~THATVCOMP|\~THATNOUNCOMP)/ && $words[$j+1] !~ /_V/){
+						$words[$j] = $words[$j]  . "~THATVCOMP";
+					}
+					if ($words[$j-8] =~ /^($PUBV|$PRVV|$SUAV|$STANCEVRBS|$PERCEPTVRBS)\_V/i && $words[$j-7] =~ /_P/ && $words[$j-6] !~ /_(N|V)/ && $words[$j] =~ /^(that|dat|tht)_/ && $words[$j] !~ /(\~THATADJCOMP|\~THATVCOMP|\~THATNOUNCOMP)/ && $words[$j+1] !~ /_V/){
+						$words[$j] = $words[$j]  . "~THATVCOMP";
+					}
+					if ($words[$j-9] =~ /^($PUBV|$PRVV|$SUAV|$STANCEVRBS|$PERCEPTVRBS)\_V/i && $words[$j-8] =~ /,_,/ && $words[$j-7] =~ /_P/ && $words[$j-6] !~ /_(N|V)/ && $words[$j] =~ /^(that|dat|tht)_/ && $words[$j] !~ /(\~THATADJCOMP|\~THATVCOMP|\~THATNOUNCOMP)/ && $words[$j+1] !~ /_V/){
+						$words[$j] = $words[$j]  . "~THATVCOMP";
+					}
+					if ($words[$j-9] =~ /^($PUBV|$PRVV|$SUAV|$STANCEVRBS|$PERCEPTVRBS)\_V/i && $words[$j-8] =~ /_P/ && $words[$j-7] !~ /_(N|V)/ && $words[$j] =~ /^(that|dat|tht)_/ && $words[$j] !~ /(\~THATADJCOMP|\~THATVCOMP|\~THATNOUNCOMP)/ && $words[$j+1] !~ /_V/){
+						$words[$j] = $words[$j]  . "~THATVCOMP";
+					}
+					if ($words[$j-10] =~ /^($PUBV|$PRVV|$SUAV|$STANCEVRBS|$PERCEPTVRBS)\_V/i && $words[$j-9] =~ /,_,/ && $words[$j-8] =~ /_P/ && $words[$j-7] !~ /_(N|V)/ && $words[$j] =~ /^(that|dat|tht)_/ && $words[$j] !~ /(\~THATADJCOMP|\~THATVCOMP|\~THATNOUNCOMP)/ && $words[$j+1] !~ /_V/){
+						$words[$j] = $words[$j]  . "~THATVCOMP";
+					}
+					if ($words[$j-10] =~ /^($PUBV|$PRVV|$SUAV|$STANCEVRBS|$PERCEPTVRBS)\_V/i && $words[$j-9] =~ /_P/ && $words[$j-8] !~ /_(N|V)/ && $words[$j] =~ /^(that|dat|tht)_/ && $words[$j] !~ /(\~THATADJCOMP|\~THATVCOMP|\~THATNOUNCOMP)/ && $words[$j+1] !~ /_V/){
+						$words[$j] = $words[$j]  . "~THATVCOMP";
+					}
+					if ($words[$j-11] =~ /^($PUBV|$PRVV|$SUAV|$STANCEVRBS|$PERCEPTVRBS)\_V/i && $words[$j-10] =~ /,_,/ && $words[$j-9] =~ /_P/ && $words[$j-8] !~ /_(N|V)/ && $words[$j] =~ /^(that|dat|tht)_/ && $words[$j] !~ /(\~THATADJCOMP|\~THATVCOMP|\~THATNOUNCOMP)/ && $words[$j+1] !~ /_V/){
+						$words[$j] = $words[$j]  . "~THATVCOMP";
+					}
+					if ($words[$j-11] =~ /^($PUBV|$PRVV|$SUAV|$STANCEVRBS|$PERCEPTVRBS)\_V/i && $words[$j-10] =~ /_P/ && $words[$j-9] !~ /_(N|V)/ && $words[$j] =~ /^(that|dat|tht)_/ && $words[$j] !~ /(\~THATADJCOMP|\~THATVCOMP|\~THATNOUNCOMP)/ && $words[$j+1] !~ /_V/){
+						$words[$j] = $words[$j]  . "~THATVCOMP";
+					}
+					if ($words[$j-12] =~ /^($PUBV|$PRVV|$SUAV|$STANCEVRBS|$PERCEPTVRBS)\_V/i && $words[$j-11] =~ /,_,/ && $words[$j-10] =~ /_P/ && $words[$j-9] !~ /_(N|V)/ && $words[$j] =~ /^(that|dat|tht)_/ && $words[$j] !~ /(\~THATADJCOMP|\~THATVCOMP|\~THATNOUNCOMP)/ && $words[$j+1] !~ /_V/){
+						$words[$j] = $words[$j]  . "~THATVCOMP";
+					}
+					if ($words[$j-12] =~ /^($PUBV|$PRVV|$SUAV|$STANCEVRBS|$PERCEPTVRBS)\_V/i && $words[$j-11] =~ /_P/ && $words[$j-10] !~ /_(N|V)/ && $words[$j] =~ /^(that|dat|tht)_/ && $words[$j] !~ /(\~THATADJCOMP|\~THATVCOMP|\~THATNOUNCOMP)/ && $words[$j+1] !~ /_V/){
+						$words[$j] = $words[$j]  . "~THATVCOMP";
+					}
+					if ($words[$j-2] =~ /^($PUBV|$SUAV|$PRVV|$STANCEVRBS|$PERCEPTVRBS)\_V/i && $words[$j] =~ /^(that|tht|dat)_/i && $words[$j] !~ /(\~THATVCOMP|\~THATNOUNCOMP)/ && $words[$j+1] !~ /_(&|V|\,)/i){
+						$words[$j] = $words[$j]  . "~THATVCOMP";
+					}
+					if ($words[$j-3] =~ /^($PUBV|$SUAV|$PRVV|$STANCEVRBS|$PERCEPTVRBS)\_V/i && $words[$j] =~ /^(that|tht|dat)_/i && $words[$j] !~ /(\~THATVCOMP|\~THATNOUNCOMP)/ && $words[$j+1] !~ /_(&|V|\,)/i){
+						$words[$j] = $words[$j]  . "~THATVCOMP";
+					}
+					if ($words[$j-3] !~ /^($ASK|$TELL)\_/i && $words[$j-2] !~ /^($ASK|$TELL)\_/i && $words[$j-1] =~ /\w+_(\^|N|\$|O)/i && $words[$j] =~ /^$RELPRO\_/i && $words[$j] !~ /(\~THATNOUNCOMP|\~THATVCOMP)/ && $words[$j+1] =~ /_V/i){
+						$words[$j] = $words[$j]  . "~RELCLAUSESUBGAP";
+					} else {
+						if ($words[$j-3] !~ /^($ASK|$TELL)\_/i && $words[$j-2] !~ /^($ASK|$TELL)\_/i && $words[$j-1] =~ /\w+_(\^|N|\$|O)/i && $words[$j] =~ /^$RELPRO\_/i && $words[$j] !~ /(\~THATNOUNCOMP|\~THATVCOMP)/ && $words[$j+1] =~ /_R/i && $words[$j+2] =~ /_V/){
+							$words[$j] = $words[$j]  . "~RELCLAUSESUBGAP";
+						} else {
+							if ($words[$j-3] !~ /^($ASK|$TELL)\_/i && $words[$j-2] !~ /^($ASK|$TELL)\_/i && $words[$j-1] =~ /\w+_(\^|N|\$|O)/i && $words[$j] =~ /^$RELPRO\_/i && $words[$j] !~ /(\~THATNOUNCOMP|\~THATVCOMP)/ && $words[$j+1] =~ /\w+_(\$|D|O|X|Y|N|L|\^|\@)/i){
+								$words[$j] = $words[$j]  . "~RELCLAUSEN";
+							} else {
+								if ($words[$j-4] !~ /^($ASK|$TELL)\_/i && $words[$j-3] !~ /^($ASK|$TELL)\_/i && $words[$j-2] =~ /\w+_(\^|N|\$|O)/i && $words[$j-1] =~ /\,_,/ && $words[$j] =~ /^$RELPRO\_/i && $words[$j] !~ /(\~THATNOUNCOMP|\~THATVCOMP)/ && $words[$j+1] =~ /_V/i){
+									$words[$j] = $words[$j]  . "~RELCLAUSESUBGAP";
+								} else {
+									if ($words[$j-4] !~ /^($ASK|$TELL)\_/i && $words[$j-3] !~ /^($ASK|$TELL)\_/i && $words[$j-2] =~ /\w+_(\^|N|\$|O)/i && $words[$j-1] =~ /\,_,/ && $words[$j] =~ /^$RELPRO\_/i && $words[$j] !~ /(\~THATNOUNCOMP|\~THATVCOMP)/ && $words[$j+1] =~ /_R/i && $words[$j+2] =~ /_V/){
+										$words[$j] = $words[$j]  . "~RELCLAUSESUBGAP";
+									} else {
+										if ($words[$j-4] !~ /^($ASK|$TELL)\_/i && $words[$j-3] !~ /^($ASK|$TELL)\_/i && $words[$j-2] =~ /\w+_(\^|N|\$|O)/i && $words[$j-1] =~ /\,_,/ && $words[$j] =~ /^$RELPRO\_/i && $words[$j] !~ /(\~THATNOUNCOMP|\~THATVCOMP)/ && $words[$j+1] =~ /\w+_(\$|D|O|X|Y|N|L|\^|\@)/i){
+											$words[$j] = $words[$j]  . "~RELCLAUSEN";
+										} else {
+											if ($words[$j-4] !~ /^($ASK|$TELL)\_/i && $words[$j-3] !~ /^($ASK|$TELL)\_/i && $words[$j-2] =~ /\w+_(\^|N|\$|O)/i && $words[$j-1] =~ /\,_,/ && $words[$j] =~ /^$RELPRO\_/i && $words[$j] !~ /(\~THATNOUNCOMP|\~THATVCOMP)/ && $words[$j+1] =~ /_(A|R)/ && $words[$j+2] =~ /\w+_(\$|D|O|X|Y|N|L|\^|\@)/i){
+												$words[$j] = $words[$j]  . "~RELCLAUSEN";
+											} else {
+												if ($words[$j-3] !~ /^($ASK|$TELL)\_/i && $words[$j-2] !~ /^($ASK|$TELL)\_/i && $words[$j-1] =~ /\w+_(\^|N|\$|O)/i && $words[$j] =~ /^$RELPRO\_/i && $words[$j] !~ /(\~THATNOUNCOMP|\~THATVCOMP)/ && $words[$j+1] =~ /_(A|R)/ && $words[$j+2] =~ /\w+_(\$|D|O|X|Y|N|L|\^|\@)/i){
+													$words[$j] = $words[$j]  . "~RELCLAUSEN";
+												} else {
+													if ($words[$j-1] =~ /\w+_(\^|N|\$|O)/i && $words[$j] =~ /^(as|$SUBORDINATORNORELPRO)\_/i && $words[$j+1] =~ /_V/){
+														$words[$j] = $words[$j]  . "~SUBELIPSUBJECT";
+													}
+												}		
+											}
+										}		
+									}
+								}
+							}
+						}
+					}		
+
+					if ($words[$j-1] =~ /^$PREPDEC\_/i && $words[$j] =~ /^$WHP\_/i){
+						$words[$j] = $words[$j] . "~PIEDPIPREL";
+					}	
+
+###### find special interjections before verbs (e.g. thanks and thank you)
+					if ($j==0 && $words[$j] =~ /^thanks_/i){
+						$words[$j] = $words[$j]  . "~INTJ";
+					} 
+					if ($words[$j] =~ /^thank_/i && $words[$j] !~ /\~INTJ/ && $words[$j+1] =~/^(you|yu|u)_/i){
+						$words[$j] = $words[$j]  . "~INTJ";
+					}
+					if ($words[$j] =~ /^thanks_/i && $words[$j] !~ /\~INTJ/ && $words[$j+1] =~ /_,/){
+						$words[$j] = $words[$j]  . "~INTJ";
+					}
+					if ($words[$j] =~ /^good_/i && $words[$j+1] =~ /^luck_/i){
+						$words[$j] = $words[$j]  . "~INTJ";
+					}
+					if ($words[$j-1] =~ /^good_/i && $words[$j] =~ /^luck_/i){
+						$words[$j] = $words[$j]  . "~INTJ";
+					}
+					if ($words[$j-1] =~ /,_,/ && $words[$j] =~ /^(right|ri+ght)_/i && $words[$j+1] =~ /\?_,/){
+						$words[$j] = $words[$j]  . "~INTJ";
+					}
+###### find titles before acronym	
+					if ($words[$j] =~ /^$TITLE/i){
+						$words[$j] = $words[$j]  . "~TITLE";
+					}				
+
+
+##### find acronyms before determiners (e.g. U.S.A))
+
+					if ($words[$j] =~ /^[A-Z]_/i && $words[$j] !~ /\~ACRONYM/ && $words[$j+1] =~ /\._,/ && $words[$j+2] =~ /^[A-Z]_/i && $words[$j+3] =~ /\._,/){
+						$words[$j] = $words[$j]  . "~ACRONYM";
+						$words[$j+2] = $words[$j+2]  . "~ACRONYM"; 
+					}
+					
+					if ($words[$j] =~ /[A-Z]\.[A-Z]\.[A-Z]\./i && $words[$j] !~ /(_U|\~TITLE)/){
+						$words[$j] = $words[$j]  . "~ACRONYM";
+					} else {
+						if ($words[$j] =~ /[A-Z]\.[A-Z]\./i && $words[$j] !~ /(_U|\~TITLE)/){
+							$words[$j] = $words[$j]  . "~ACRONYM";
+						} else {
+							if ($words[$j] =~ /[A-Z]\.[A-Z]/i  && $words[$j] !~ /(_U|\~TITLE)/){
+								$words[$j] = $words[$j]  . "~ACRONYM";
+							}
+						}	
+					}
+							
+##### find determiners (predeterminers, ordinals, cardinals, articles, relatives, demonstratives, possessives)
+
+				
+						if ($words[$j] =~ /^$POSSDET\_[^L]/i && $words[$j+1] =~ /_(N|\^|\$|\#|\O)/){
+							$words[$j] = $words[$j]  . "~DET";
+						} else {
+							if ($words[$j] =~ /^$POSSDET\_[^L]/i && $words[$j+1] =~ /_(N|\^|\$|\#|\O|A)/ && $words[$j+2] =~ /_(N|\^|\$|\#|\O)/){
+								$words[$j] = $words[$j]  . "~DET";
+							} else {
+								if ($words[$j] =~ /^$POSSDET\_[^L]/i && $words[$j+1] =~ /_(N|\^|\$|\#|\O|A|R)/ && $words[$j+2] =~ /_(N|\^|\$|\#|\O|A)/ && $words[$j+3] =~ /_(N|\^|\$|\#|\O)/){
+									$words[$j] = $words[$j]  . "~DET";
+								}
+							}
+						}
+						
+					if ($words[$j] =~ /^(no|no+)_/i && $words[$j+1] =~ /^(longer|longa|more)_/i && $words[$j+2] =~ /(_A|_V)/){
+						$words[$j] = $words[$j]  . "~ADV";
+					} else {
+						if ($words[$j] =~ /^(no|no+)_/i && $words[$j+1] =~ /_V/){
+							$words[$j] = $words[$j]  . "~ADV";
+						}
+						if ($words[$j] =~ /^(no|no+)_/i && $words[$j+1] =~ /(_N|_\$)/i){
+							$words[$j] = $words[$j]  . "~DET";
+						} else {
+							if ($words[$j] =~ /^(no|no+)_/i && $words[$j+1] =~ /_A/ && $words[$j+2] =~ /(_N|_\$)/){
+								$words[$j] = $words[$j]  . "~DET";
+							}
+						}
+					}												
+					if ($words[$j-1] !~ /^$INDEFART\_/i && $words[$j] =~ /^$INDEFART\_/i && $words[$j] !~ /\~ACRONYM/){
+						$words[$j] = $words[$j]  . "~DET";
+					} 
+					if ($words[$j] =~ /^$DEFART\_/i){
+						$words[$j] = $words[$j]  . "~DET";
+					}
+					if ($words[$j-1] =~ /_P/ && $words[$j] =~ /^$QUAN\_/i && $words[$j+1] =~ /_(N|\^|\$|\#|A)/){
+						$words[$j] = $words[$j]  . "~DET"; 
+					}
+					if ($words[$j-1] =~ /_D/ && $words[$j] =~ /^$QUAN\_/i && $words[$j+1] =~ /_(N|\^|\$|\#|A)/){
+						$words[$j] = $words[$j]  . "~DET";
+					}
+					if ($words[$j] =~ /^$QUAN\_/i && $words[$j] !~ /\~DET/ && $words[$j+1] =~ /_(N|\^|\$|\#)/){
+						$words[$j] = $words[$j]  . "~DET";
+					}
+					if ($words[$j] =~ /^(much|mch)_/i && $words[$j+1] =~ /^(more|lower|colder|cooler|darker|faster|duller|drier|finer|harder|later|longer|newer|richer|softer|easier|braver|calmer|busier|fatter|taller|bigger|sadder|worse|less|older|higher|fewer|better|\w{5,}er)_A/i){
+						$words[$j] = $words[$j]  . "~ADV";
+					}
+					if ($words[$j] =~ /^$QUAN\_/i && $words[$j] !~ /(\~DET|\~ADV)/ && $words[$j+1] =~ /_A/ && $words[$j+2] =~ /_N/){
+						$words[$j] = $words[$j]  . "~DET";
+					}
+
+					if ($words[$j] =~ /^$QUAN\_/i && $words[$j+1] =~ /_D/i){
+						$words[$j] = $words[$j]  . "~PREDET";
+					}
+					if ($words[$j] =~ /^$ORD\_/i && $words[$j+1] =~ /_A/){
+						$words[$j] = $words[$j]  . "~DET";
+					}
+					if ($words[$j] =~ /^$ORD\_/i && $words[$j+1] =~ /_(N|\^|\$)/){
+						$words[$j] = $words[$j]  . "~DET";
+					} else {
+						if ($words[$j] =~ /_\$/i && $words[$j+1] =~ /_(N|\$|\^)/i){
+							$words[$j] = $words[$j]  . "~DET";
+						} else {
+							if ($words[$j] =~ /_\$/i && $words[$j+1] =~ /_A/ && $words[$j+2] =~ /(_N|_\$|_\^)/){
+								$words[$j] = $words[$j]  . "~DET";
+							} else {
+								if ($words[$j] =~ /_\$/i && $words[$j+1] =~ /_R/ && $words[$j+2] =~ /_A/ && $words[$j+3] =~ /(_N|_\$|_\^)/){
+									$words[$j] = $words[$j]  . "~DET";
+								} else {
+									if ($words[$j] =~ /^(million|millions|hundreds|hundred|thousands|thousand|tens|ten|billion|billions|trillion|trillions)/i && $words[$j+1] =~ /_(N|\^|\$)/i){
+										$words[$j] = $words[$j]  . "~DET";
+									}	
+								}	
+							}
+						}	
+					}
+					if ($words[$j] =~ /^$DEM\_/i && $words[$j] !~ /\~SUBORDINATOR/ && $words[$j+1] =~ /\w+_(N|\$|\^)/i ){
+						$words[$j] = $words[$j]  . "~DET";
+					} 
+					if ($words[$j] =~ /^$DEM\_/i && $words[$j] !~ /\~SUBORDINATOR/ && $words[$j+1] =~ /\w+_A/i && $words[$j+2] =~ /\w+_(N|\$|\^)/i){
+						$words[$j] = $words[$j]  . "~DET";
+					} 
+					if ($words[$j] =~ /^$DEM\_/i && $words[$j] !~ /\~SUBORDINATOR/ && $words[$j+1] =~ /_(R|A)/i && $words[$j+2] =~ /_A/ && $words[$j+3] =~ /\w+_(\$|N|\^)/){
+						$words[$j] = $words[$j]  . "~DET";
+					} 
+					if ($words[$j] =~ /^$DEM\_/i && $words[$j] !~ /\~SUBORDINATOR/ && $words[$j+1] =~ /_(R|A)/i && $words[$j+2] =~ /\w+_A/ && $words[$j+3] =~ /\w+_A/ && $words[$j+4] =~ /_(N|\$|\^)/){
+						$words[$j] = $words[$j]  . "~DET";
+					}	
+					if ($words[$j-1] =~ /_P/ && $words[$j] =~ /^(that|dat|tht)_/i && $words[$j+1] =~ /_N/){
+						$words[$j] = $words[$j]  . "~DET";
+					}
+					if ($words[$j-1] =~ /_P/ && $words[$j] =~ /^(that|dat|tht)_/i && $words[$j+1] =~ /_A/ && $words[$j+2] =~ /_N/){
+						$words[$j] = $words[$j]  . "~DET";
+					}
+					if ($words[$j-1] =~ /_P/ && $words[$j] =~ /^(that|dat|tht)_/i && $words[$j+1] =~ /_R/ && $words[$j+2] =~ /_A/ && $words[$j+3] =~ /N/){
+						$words[$j] = $words[$j]  . "~DET";
+					}
+					if ($words[$j] =~ /^(that|dat|tht)_/i && $words[$j+1] =~ /_A/ && $words[$j+2] =~ /_N/ && $words[$j+3] =~ /[\!\?\.\:]_(Q|,|G)/){
+						$words[$j] = $words[$j]  . "~DET";
+					}
+					if ($words[$j] =~ /^(that|dat|tht)_/i && $words[$j+1] =~ /_N/ && $words[$j+3] =~ /[\!\?\.\:\-]_(Q|,|G)/){
+						$words[$j] = $words[$j]  . "~DET";
+					}
+					if ($words[$j] =~ /^(such|sch)_/i && $words[$j+1] =~ /^(a|an)_D/){
+						$words[$j] = $words[$j]  . "~PREDET";
+					}
+					if ($words[$j] =~ /^(such|sch)_/i && $words[$j+1] =~ /_(A|N)/){
+						$words[$j] = $words[$j]  . "~DET";
+					}
+					
+					#if ($words[$j-4] !~ /^($PRVV|$PUBV|$SUAV)\_/ && $words[$j-1] =~ /[\:\.\,\-\!\?]_(,|Q)/ && $words[$j] =~ /^(that|dat|tht)_/i && $words[$j+1] =~ /_R/ && $words[$j+2] =~ /_A/ && $words[$j+3] =~ /N/){
+					#	$words[$j] = $words[$j]  . "~DET";
+					#}
+					if ($words[$j-1] =~ /_D_\~DET/ && $words[$j-1] !~ /^$SNDPP\_/ && $words[$j] =~ /_V/ && $words[$j+1] =~ /_(P|O|D|A)/){
+						$words[$j] = $words[$j]  . "~NOUN";
+					}
+					if ($words[$j-1] =~ /_D_\~DET/ && $words[$j-1] !~ /^$SNDPP\_/ && $words[$j] =~ /_V/ && $words[$j] !~ /\~ADJ/ && $words[$j+1] =~ /_(N|\^|\@|T)/){
+						$words[$j] = $words[$j]  . "~ADJ";
+					}
+
+##### find verbs (auxiliary, modal, main)
+
+					if ($words[$j] =~ /^$PUBV\_V/i && $words[$j] !~ /(\~NOUN|\~ADJ|\~VERB|\~ADVERB)/){
+						$words[$j] = $words[$j]  . "~VERB";
+					} 
+					if ($words[$j] =~ /^$PRVV\_V/i && $words[$j] !~ /(\~NOUN|\~ADJ|\~VERB|\~ADVERB)/){
+						$words[$j] = $words[$j]  . "~VERB";
+					}
+					if ($words[$j] =~ /^$SUAV\_V/i && $words[$j] !~ /(\~NOUN|\~ADJ|\~VERB|\~ADVERB)/){
+						$words[$j] = $words[$j]  . "~VERB";
+					}
+					if ($words[$j] =~ /^$PERCEPTVRBS\_V/i && $words[$j] !~ /(\~NOUN|\~ADJ|\~VERB|\~ADVERB)/){
+						$words[$j] = $words[$j]  . "~VERB";
+					}
+					if ($words[$j] =~ /^$STANCEVRBS\_V/i && $words[$j] !~ /(\~NOUN|\~ADJ|\~VERB|\~ADVERB)/){
+						$words[$j] = $words[$j]  . "~VERB";
+					}
+
+					if ($words[$j] =~ /^($BE2\_V|$BE2\_L)/i){
+						$words[$j] = $words[$j]  . "~VERB";
+					}
+					if ($words[$j] =~ /^($HAVE2\_V|$HAVE2\_L)/i){
+						$words[$j] = $words[$j]  . "~VERB";
+					}
+					if ($words[$j] =~ /^$DO\_V/i){
+						$words[$j] = $words[$j]  . "~VERB";
+					}
+					if ($words[$j] =~ /^$MODALPROB\_/i){
+						$words[$j] = $words[$j]  . "~MDVERB";
+					}
+					if ($words[$j] =~ /^$MODALNEC\_/i){
+						$words[$j] = $words[$j]  . "~MDVERB";
+					}
+					if ($words[$j] =~ /^$MODALPRED\_/i){
+						$words[$j] = $words[$j]  . "~MDVERB";
+					}
+					if ($words[$j] =~ /^(would've|could've|should've|must've)_/i){
+						$words[$j] = $words[$j]  . "~AUXHAVE";
+					}
+
+					if ($words[$j] =~ /^$COPULAR2\_V/i && $words[$j] !~ /\~VERB/ && $words[$j+1] =~ /_A/){
+						$words[$j] = $words[$j]  . "~VERB";
+					} else {
+						if ($words[$j] =~ /^$COPULAR2\_V/i && $words[$j] !~ /\~VERB/ && $words[$j+1] =~ /_R/ && $words[$j+2] =~ /_A/){
+							$words[$j] = $words[$j]  . "~VERB";
+						} 
+					}
+					if ($words[$j] =~ /^(turn|turns|turned|turning|end|ends|ending|ended|wind|wound|winds|winding)_V/i && $words[$j+1] =~ /^up_/i && $words[$j+2] =~ /_A/){
+						$words[$j] = $words[$j]  . "~MULTIWVB";
+					} else {
+						if ($words[$j] =~ /^(turn|turns|turned|turning|end|ends|ending|ended|wind|wound|winds|winding)_V/i && $words[$j+1] =~  /^up_/i && $words[$j+2] =~ /_R/ && $words[$j+3] =~ /_A/){
+							$words[$j] = $words[$j]  . "~MULTIWVB";
+						} 
+					}
+					if ($words[$j] =~ /^(carried|carries|carrying|carry|finds|found|find|finding|point|points|pointed|pointing)_/i && $words[$j+1] =~ /^out_/i){
+						$words[$j] = $words[$j]  . "~MULTIWVB";
+					}
+
+					if ($words[$j] =~ /^(look|looks|looked|looking)_/i && $words[$j+1] =~ /^(at|like|forward)_/i){
+						$words[$j] = $words[$j]  . "~MULTIWVB";
+					}
+
+					if ($words[$j] =~ /^(put|putting)_/i && $words[$j] !~ /(\~ADJ|\~NOUN)/ && $words[$j+1] =~ /^up_/i && $words[$j+2] =~ /^(with|wiv|w\.|w\/)_/i){
+						$words[$j] = $words[$j]  . "~MULTIWVB";
+					}
+
+					if ($words[$j] =~ /^(talking|talk|talks|talked|think|thought|thinking|thinks)_/i && $words[$j] !~ /(\~ADJ|\~NOUN)/ && $words[$j+1] =~ /^about_/i){
+						$words[$j] = $words[$j]  . "~MULTIWVB";
+					}
+					if ($words[$j] =~ /^(talking|talk|talks|talked|say|said|says|saying|spoke|speak|speaks|speaking|listen|listens|listened|listening)_/i && $words[$j] !~ /(\~ADJ|\~NOUN)/ && $words[$j+1] =~ /^to_/i){
+						$words[$j] = $words[$j]  . "~MULTIWVB";
+					}
+					if ($words[$j] =~ /^(waiting|wait|waited|waits)_/i && $words[$j] !~ /(\~ADJ|\~NOUN)/ && $words[$j+1] =~ /^(for|4|fr)_/i){
+						$words[$j] = $words[$j]  . "~MULTIWVB";
+					}
+					if ($words[$j] =~ /^(depend|depends|depending|depended)_/i && $words[$j] !~ /(\~ADJ|\~NOUN)/ && $words[$j+1] =~ /^on_/i){
+						$words[$j] = $words[$j]  . "~MULTIWVB";
+					}
+					if ($words[$j] =~ /^(go|goes|went|going)_/i && $words[$j] !~ /(\~ADJ|\~NOUN)/ && $words[$j+1] =~ /^(through|thru|throgh|thrugh)_/i){
+						$words[$j] = $words[$j]  . "~MULTIWVB";
+					}
+					if ($words[$j] =~ /^(make|made|makes|making)_/i && $words[$j] !~ /(\~ADJ|\~NOUN)/ && $words[$j+1] =~ /^off_/i && $words[$j+2] =~ /^(with|wiv|w\.|w\/)_/i){
+						$words[$j] = $words[$j]  . "~MULTIWVB";
+					}
+
+					if ($words[$j] =~ /^(shut|pick|picks|picking|picked|get|got|gets|getting|bring|brought|bringing|brings|stand|stands|standing|stood|sat|sit|sitting|sits|make|made|making|makes|take|takes|took|taking)_/i && $words[$j] !~ /(\~ADJ|\~NOUN)/ && $words[$j+1] =~ /^up_/i){
+						$words[$j] = $words[$j]  . "~MULTIWVB";
+					}
+
+					if ($words[$j] =~ /^(come|came|coming|comes)_/i && $words[$j] !~ /(\~ADJ|\~NOUN)/ && $words[$j+1] =~ /^(on|back|over)_/i){
+						$words[$j] = $words[$j]  . "~MULTIWVB";
+					}
+
+					if ($words[$j] =~ /^(hold|held|holding|holds|turn|turns|turned|turning)_/i && $words[$j] !~ /(\~ADJ|\~NOUN)/ && $words[$j+1] =~ /^on_/i){
+						$words[$j] = $words[$j]  . "~MULTIWVB";
+					}
+
+					if ($words[$j] =~ /^(went|go|goes|going)_/i && $words[$j] !~ /(\~ADJ|\~NOUN)/ && $words[$j+1] =~ /^(off|on)_/i){
+						$words[$j] = $words[$j]  . "~MULTIWVB";
+					}
+
+					if ($words[$j] =~ /^(broke|breaks|breaking|break)_/i && $words[$j] !~ /(\~ADJ|\~NOUN)/ && $words[$j+1] =~ /^down_/i){
+						$words[$j] = $words[$j]  . "~MULTIWVB";
+					}
+					if ($words[$j-1] =~ /^(turn|turns|turned|turning|end|ends|ending|ended|wind|wound|winds|winding)_V/i && $words[$j] !~ /(\~ADJ|\~NOUN)/ && $words[$j] =~ /^up_/i && $words[$j+1] =~ /_A/){
+						$words[$j] = $words[$j]  . "~MULTIWVB";
+					} else {
+						if ($words[$j-1] =~ /^(turn|turns|turned|turning|end|ends|ending|ended|wind|wound|winds|winding)_V/i && $words[$j] !~ /(\~ADJ|\~NOUN)/ && $words[$j] =~  /^up_/i && $words[$j+1] =~ /_R/ && $words[$j+2] =~ /_A/){
+							$words[$j] = $words[$j]  . "~MULTIWVB";
+						} 
+					}
+					if ($words[$j-1] =~ /^(carried|carries|carrying|carry|finds|found|find|finding|point|points|pointed|pointing)_/i && $words[$j] !~ /(\~ADJ|\~NOUN)/ && $words[$j] =~ /^out_/i){
+						$words[$j] = $words[$j]  . "~MULTIWVB";
+					}
+
+					if ($words[$j-1] =~ /^(look|looks|looked|looking)_/i && $words[$j] !~ /(\~ADJ|\~NOUN)/ && $words[$j] =~ /^(at|like|forward)_/i){
+						$words[$j] = $words[$j]  . "~MULTIWVB";
+					}
+
+					if ($words[$j-1] =~ /^put_/i && $words[$j] !~ /(\~ADJ|\~NOUN)/ && $words[$j] =~ /^up_/i && $words[$j+1] =~ /^(with|wiv|w\.|w\/)_/i){
+						$words[$j] = $words[$j]  . "~MULTIWVB";
+					}
+
+					if ($words[$j-1] =~ /^(talking|talk|talks|talked|think|thought|thinking|thinks)_/i && $words[$j] !~ /(\~ADJ|\~NOUN)/ && $words[$j] =~ /^about_/i){
+						$words[$j] = $words[$j]  . "~MULTIWVB";
+					}
+					if ($words[$j-1] =~ /^(talking|talk|talks|talked|say|said|says|saying|spoke|speak|speaks|speaking|listen|listens|listened|listening)_/i && $words[$j] !~ /(\~ADJ|\~NOUN)/ && $words[$j] =~ /^to_/i){
+						$words[$j] = $words[$j]  . "~MULTIWVB";
+					}
+					if ($words[$j-1] =~ /^(waiting|wait|waited|waits)_/i && $words[$j] !~ /(\~ADJ|\~NOUN)/ && $words[$j] =~ /^(for|4|fr)_/i){
+						$words[$j] = $words[$j]  . "~MULTIWVB";
+					}
+					if ($words[$j-1] =~ /^(depend|depends|depending|depended)_/i && $words[$j] !~ /(\~ADJ|\~NOUN)/ && $words[$j] =~ /^on_/i){
+						$words[$j] = $words[$j]  . "~MULTIWVB";
+					}
+					if ($words[$j-1] =~ /^(go|goes|went|going)_/i && $words[$j] !~ /(\~ADJ|\~NOUN)/ && $words[$j] =~ /^(through|thru|throgh|thrugh)_/i){
+						$words[$j] = $words[$j]  . "~MULTIWVB";
+					}
+					if ($words[$j-1] =~ /^(make|made|makes|making)_/i && $words[$j] !~ /(\~ADJ|\~NOUN)/ && $words[$j] =~ /^off_/i && $words[$j+1] =~ /^(with|wiv|w\.|w\/)_/i){
+						$words[$j] = $words[$j]  . "~MULTIWVB";
+					}
+
+					if ($words[$j-1] =~ /^(shut|pick|picks|picking|picked|get|got|gets|getting|bring|brought|bringing|brings|stand|stands|standing|stood|sat|sit|sitting|sits|make|made|making|makes|take|takes|took|taking)_/i && $words[$j] !~ /(\~ADJ|\~NOUN)/ && $words[$j] =~ /^up_/i){
+						$words[$j] = $words[$j]  . "~MULTIWVB";
+					}
+
+					if ($words[$j-1] =~ /^come_/i && $words[$j] !~ /(\~ADJ|\~NOUN)/ && $words[$j] =~ /^(on|back|over)_/i){
+						$words[$j] = $words[$j]  . "~MULTIWVB";
+					}
+
+					if ($words[$j-1] =~ /^(hold|held|holding|holds|turn|turns|turned|turning)_/i && $words[$j] !~ /(\~ADJ|\~NOUN)/ && $words[$j] =~ /^on_/i){
+						$words[$j] = $words[$j]  . "~MULTIWVB";
+					}
+
+					if ($words[$j-1] =~ /^(went|go|goes|going)_/i && $words[$j] !~ /(\~ADJ|\~NOUN)/ && $words[$j] =~ /^(off|on)_/i){
+						$words[$j] = $words[$j]  . "~MULTIWVB";
+					}
+
+					if ($words[$j-1] =~ /^(broke|breaks|breaking|break)_/i && $words[$j] !~ /(\~ADJ|\~NOUN)/ && $words[$j] =~ /^down_/i){
+						$words[$j] = $words[$j]  . "~MULTIWVB";
+					}
+					if ($words[$j] =~ /^\w+_T/ && $words[$j] !~ /\~MULTIWVB/){
+						$words[$j] = $words[$j]  . "~MULTIWVB";
+					}
+
+					if ($words[$j-1] =~ /^$PREPDEC\_/i && $words[$j-1] !~ /(\~SUBORDINATOR|\~SUBELIPSUBJECT|\~VERB|\~MULTIWVB|\~INFINITIVE)/ && $words[$j] =~ /(\w+ing_V|\w+ing_N)/i){
+						$words[$j] = $words[$j]  . "~GERUND";
+					}
+					if ($words[$j-2] =~ /^$PREPDEC\_/i && $words[$j-2] !~ /(\~SUBORDINATOR|\~SUBELIPSUBJECT|\~VERB|\~MULTIWVB|\~INFINITIVE|\~SPLINFINITIVE)/ && $words[$j-1] =~ /_R/ && $words[$j] =~ /(\w+ing_V|\w+ing_N)/i){
+						$words[$j] = $words[$j]  . "~GERUND";
+					}
+					if ($words[$j] =~ /^$PREPDEC\_/i && $words[$j] !~ /(\~SUBORDINATOR|\~SUBELIPSUBJECT|\~VERB|\~MULTIWVB|\~INFINITIVE)/ && $words[$j+1] =~ /\w+ing_V/i){
+						$words[$j] = $words[$j]  . "~PREP";
+					}
+					if ($words[$j] =~ /^$PREPDEC\_/i && $words[$j] !~ /(\~SUBORDINATOR|\~SUBELIPSUBJECT|\~VERB|\~MULTIWVB|\~INFINITIVE|\~SPLINFINITIVE)/ && $words[$j+1] =~ /_R/ && $words[$j+2] =~ /\w+ing_V/i){
+						$words[$j] = $words[$j]  . "~PREP";
+					}
+					if ($words[$j-1] =~ /_A/ && $words[$j] =~ /^$SUBORDINATOR\_/i && $words[$j] !~ /\~PREP/ && $words[$j+1] =~ /_V/ && $words[$j+1] !~ /\~GERUND/){
+						$words[$j] = $words[$j]  . "~SUBORDINATOR";
+					}
+					if ($words[$j] =~ /\w+_V/i && $words[$j] !~ /(\~NOUN|\~ADJ|\~VERB|\~ADVERB|\~MDVERB|\~QUOT|\~INTJ|\~MULTIWVB|\~MULTIWVB|\~PREP|\~GERUND)/){
+						$words[$j] = $words[$j]  . "~VERB";
+					}
+
+					if ($words[$j] =~ /^($BEPROCONTRACT\_|its_L|your_L|ur_L)/i && $words[$j+1] =~ /\w+ing_V/i){
+						$words[$j] = $words[$j]  . "~PROCONTRACTAUXBE";
+						
+					}
+					if ($words[$j] =~ /^($BEPROCONTRACT\_|your_L|ur_L|its_L)/i && $words[$j+1] =~ /_R/ && $words[$j+2] =~ /\w+ing_V/i){
+						$words[$j] = $words[$j]  . "~PROCONTRACTAUXBE";
+						
+					}
+					if ($words[$j] =~ /^($BEPROCONTRACT\_|your_L|ur_L|its_L)/i && $words[$j+1] =~ /_R/ && $words[$j+2] =~ /_R/ && $words[$j+3] =~ /\w+ing_V/i){
+						$words[$j] = $words[$j]  . "~PROCONTRACTAUXBE";
+						
+					}	
+					if ($words[$j] =~ /^$PROCONTRACTS\_/i && $words[$j+1] =~ /^been_V/i){
+						$words[$j] = $words[$j]  . "~PROCONTRACTAUXHAVE";
+						$words[$j+1] = $words[$j+1]  . "~PERFECT";
+					}
+					if ($words[$j] =~ /^$PROCONTRACTS\_/i && $words[$j+1] =~ /^all_D/ && $words[$j+2] =~ /^been_V/i){
+						$words[$j] = $words[$j]  . "~PROCONTRACTAUXHAVE";
+						$words[$j+2] = $words[$j+2]  . "~PERFECT";
+					}
+					if ($words[$j] =~ /^$PROCONTRACTS\_/i && $words[$j+1] =~ /_R/ && $words[$j+2] =~ /^been_V/i){
+						$words[$j] = $words[$j]  . "~PROCONTRACTAUXHAVE";
+						$words[$j+2] = $words[$j+2]  . "~PERFECT";
+					}
+					if ($words[$j] =~ /^(it's|its)_L/i && $words[$j+1] =~ /^($PAST\_|\w+ed_V)/i){
+						$words[$j] = $words[$j]  . "~PROCONTRACTAUXBE";
+					}
+					if ($words[$j] =~ /^$PROCONTRACTS\_/i && $words[$j+1] =~ /^($PAST_PART|\w+ed|$PAST)\_V/i && $words[$j] !~ /\~PROCONTRACTAUXHAVE/){
+						$words[$j] = $words[$j]  . "~PROCONTRACTAUXHAVE";
+						$words[$j+1] = $words[$j+1]  . "~PERFECT";
+					}	
+					if ($words[$j] =~ /^$HAVEPROCONTRACT\_/i && $words[$j+1] =~ /^($PAST_PART|\w+ed|$PAST)\_V/i && $words[$j] !~ /(\~PROCONTRACTAUXBE|\~PROCONTRACTAUXHAVE)/){
+						$words[$j] = $words[$j]  . "~PROCONTRACTAUXHAVE";
+						$words[$j+1] = $words[$j+1]  . "~PERFECT";
+					}
+					if ($words[$j] =~ /^$HAVEPROCONTRACT\_/i && $words[$j] !~ /(\~PROCONTRACTAUXBE|\~PROCONTRACTAUXHAVE)/ && $words[$j+1] =~ /all_D/i && $words[$j+2] =~ /^($PAST_PART|\w+ed|$PAST)\_V/i){      ###we've all wondered
+						$words[$j] = $words[$j]  . "~PROCONTRACTAUXHAVE";
+						$words[$j+2] = $words[$j+2]  . "~PERFECT";
+					}
+					if ($words[$j] =~ /^$HAVEPROCONTRACT\_/i && $words[$j] !~ /(\~PROCONTRACTAUXBE|\~PROCONTRACTAUXHAVE)/ && $words[$j+1] =~ /_R/ && $words[$j+2] =~ /^($PAST_PART|\w+ed|$PAST)\_V/i){
+						$words[$j] = $words[$j]  . "~PROCONTRACTAUXHAVE";
+						$words[$j+2] = $words[$j+2]  . "~PERFECT";
+					}
+					if ($words[$j] =~ /^($BEPROCONTRACT\_|your_L|ur_L|its_L)/i && $words[$j+1] =~ /^($PAST_PART|\w+ed|$PAST)\_V/i && $words[$j] !~ /\~PROCONTRACTAUXHAVE/){
+						$words[$j] = $words[$j]  . "~PROCONTRACTAUXBE";
+					}
+					if ($words[$j] =~ /^($BEPROCONTRACT\_|your_L|ur_L|its_L)/i && $words[$j+1] =~ /_R/ && $words[$j+2] =~ /^($PAST_PART|\w+ed|$PAST)\_V/i && $words[$j] !~ /\~PROCONTRACTAUXHAVE/){
+						$words[$j] = $words[$j]  . "~PROCONTRACTAUXBE";
+					}
+					if ($words[$j] =~ /^$HAVEPROCONTRACT\_/i && $words[$j] !~ /~PROCONTRACTAUXHAVE/ && $words[$j+1] =~ /(_N|_D|_\$)/){
+						$words[$j] = $words[$j]  . "~PROCONTRACTHAVEMV";	
+					}
+
+					if ($words[$j] =~ /^($BEPROCONTRACT\_|your_L|ur_L|its_L)/i && $words[$j+1] =~ /_R/ && $words[$j+2] =~ /_R/ && $words[$j+3] =~ /_A/ && $words[$j+3] !~ /\w+_(A|R|N|\^)/){
+						$words[$j] = $words[$j]  . "~PROCONTRACTCOPVB";	
+					}
+					if ($words[$j] =~ /^($BEPROCONTRACT\_|your_L|ur_L|its_L)/i && $words[$j+1] =~ /_R/ && $words[$j+2] =~ /_A/ && $words[$j+3] !~ /\w+_(A|R|N|\^)/){
+						$words[$j] = $words[$j]  . "~PROCONTRACTCOPVB";	
+					}
+					if ($words[$j] =~ /^($BEPROCONTRACT\_|your_L|ur_L|its_L)/i && $words[$j+1] =~ /_A/ && $words[$j+2] !~ /\w+_(A|R|N|\^)/){
+						$words[$j] = $words[$j]  . "~PROCONTRACTCOPVB";	
+					}
+					if ($words[$j] =~ /^($PROCONTRACTS\_|your_L|ur_L|its_L)/i && $words[$j+1] =~ /_A/ && $words[$j+2] !~ /\w+_(A|R|N|\^)/ && $words[$j] !~ /\~PROCONTRACTCOPVB/){
+						$words[$j] = $words[$j]  . "~PROCONTRACTCOPVB";	
+					}
+					if ($words[$j] =~ /^($BEPROCONTRACT\_|your_L|ur_L|its_L)/i && $words[$j] !~ /(\~PROCONTRACTBEMV|\~PROCONTRACTAUXHAVE)/ && $words[$j+1] !~ /_V/ && $words[$j+2] =~ /(_N|_D|_A|_\$|_P|_\^|\._,|\?_,|\!_,)/){
+						$words[$j] = $words[$j]  . "~PROCONTRACTBEMV";	
+					}
+					if ($words[$j] =~ /^($BEPROCONTRACT\_|your_L|ur_L|its_L)/i && $words[$j+1] =~ /_R/ && $words[$j+2] =~ /_R/ && $words[$j+3] =~ /_(D|A|N|,|\^)/){
+						$words[$j] = $words[$j]  . "~PROCONTRACTBEMV";	
+					}
+					if ($words[$j] =~ /^($BEPROCONTRACT\_|your_L|ur_L|its_L)/i && $words[$j] !~ /\~PROCONTRACTBEMV/ && $words[$j+1] =~ /_R/ && $words[$j+2] =~ /(_D|_A|_N|_,|_\^)/){
+						$words[$j] = $words[$j]  . "~PROCONTRACTBEMV";	
+					}
+					if ($words[$j] =~ /^($BEPROCONTRACT\_|your_L|ur_L|its_L)/i && $words[$j] !~ /(\~PROCONTRACTBEMV|\~PROCONTRACTAUXHAVE)/ && $words[$j+1] =~ /_(A|N|\$|D|P|\^)/){
+						$words[$j] = $words[$j]  . "~PROCONTRACTBEMV";	
+					}
+					if ($words[$j] =~ /^($PROCONTRACTS\_|your_L|ur_L|its_L)/i && $words[$j] !~ /(\~PROCONTRACTBEMV|\~PROCONTRACTAUXHAVE)/ && $words[$j+1] =~ /_(A|N|\$|D|P|\^)/){
+						$words[$j] = $words[$j]  . "~PROCONTRACTBEMV";	
+					}
+					if ($words[$j] =~ /^($PROCONTRACTS\_|your_L|ur_L|its_L)/i && $words[$j] !~ /(\~PROCONTRACTBEMV|\~PROCONTRACTAUXHAVE)/ && $words[$j+1] =~ /_R/ && $words[$j+2] !~ /_(R|A)/ && $words[$j+3] !~ /_A/){
+						$words[$j] = $words[$j]  . "~PROCONTRACTBEMV";	
+					}
+
+					if ($words[$j] =~ /^($BEPROCONTRACT\_|your_L|ur_L)/i && $words[$j] !~ /(\~PROCONTRACTBEMV|\~PROCONTRACTAUXBE|\~PROCONTRACTAUXHAVE|\~PROCONTRACTCOPVB)/ && $words[$j+1] =~ /_V/){
+						$words[$j] = $words[$j]  . "~PROCONTRACTAUXBE";	
+					}
+					
+					if ($words[$j] =~ /^$HAVEWOULDCONTRACT\_/i && $words[$j+1] =~ /_R/ && $words[$j+2] =~ /_R/i && $words[$j+3] =~ /^$PAST_PART\_/i){
+						$words[$j] = $words[$j]  . "~PROCONTRACTAUXHAVE";
+						$words[$j+3] = $words[$j+3]  . "~PERFECT";
+					}
+					if ($words[$j] =~ /^$HAVEWOULDCONTRACT\_/i && $words[$j+1] =~ /^$PAST_PART\_/i){
+						$words[$j] = $words[$j]  . "~PROCONTRACTAUXHAVE";
+						$words[$j+1] = $words[$j+1]  . "~PERFECT";
+					}
+					if ($words[$j] =~ /^$HAVEWOULDCONTRACT\_/i && $words[$j+1] =~ /_R/ && $words[$j+2] =~ /^$PAST_PART\_/i){
+						$words[$j] = $words[$j]  . "~PROCONTRACTAUXHAVE";
+						$words[$j+2] = $words[$j+2]  . "~PERFECT";
+					}
+					if ($words[$j] =~ /^$HAVEWOULDCONTRACT\_/i && $words[$j+1] =~ /$IRREGULAR\_V/){
+						$words[$j] = $words[$j]  . "~PROCONTRACTMDPRED";
+					}	
+					if ($words[$j] =~ /^$HAVEWOULDCONTRACT\_/i && $words[$j+1] =~ /\w+[^(better|betta|beta)]_R/i && $words[$j+1] =~ /$IRREGULAR\_V/){
+						$words[$j] = $words[$j]  . "~PROCONTRACTMDPRED";
+					}	
+					if ($words[$j] =~ /^$HAVEWOULDCONTRACT\_/i && $words[$j+1] =~ /^(better|betta|beta)_/i){
+						$words[$j] = $words[$j]  . "~PROCONTRACTAUXHAVE";
+					} else {
+						if ($words[$j] =~ /^$HAVEWOULDCONTRACT\_/i && $words[$j+1] =~ /\w+[^(better|betta|beta)]_R/i && $words[$j+2] !~ /($PAST_PART|$IRREGULAR|\w+ed|$PAST)\_V/){
+							$words[$j] = $words[$j]  . "~PROCONTRACTMDPRED";
+						} else {
+							if ($words[$j] =~ /^$HAVEWOULDCONTRACT\_/i && $words[$j+1] !~ /($PAST_PART|$IRREGULAR|\w+ed|$PAST)\_V/ && $words[$j+1] =~ /_V/){
+								$words[$j] = $words[$j]  . "~PROCONTRACTMDPRED";
+							}	
+						}
+					}
+					if ($words[$j] =~ /^$WILLPROCONTRACT\_/i){
+						$words[$j] = $words[$j]  . "~PROCONTRACTMDPRED";
+					}
+					if ($words[$j] =~ /^$MODALPROB\_/i){
+						$words[$j] = $words[$j]  . "~MDPOSS";
+					}
+					if ($words[$j] =~ /^$MODALNEC\_/i){
+						$words[$j] = $words[$j]  . "~MDNEC";
+					}
+					if ($words[$j] =~ /^$MODALPRED\_/i){
+						$words[$j] = $words[$j]  . "~MDPRED";
+					}
+					
+					if ($words[$j] =~ /\w+ing_/i && $words[$j] =~ /(\~VERB|\~MULTIWVB)/ && $words[$j] !~ /\~GERUND/){
+						$words[$j] = $words[$j]  . "~ING";
+					}
+					if ($words[$j-1] !~ /\~INFINITIVE/ && $words[$j] =~ /\w+s_\w_\~VERB/i && $words[$j] !~ /^$VERB_S\_/i){
+						$words[$j] = $words[$j]  . "~SINFLECT";
+					}
+					if ($words[$j] =~ /^$BE\_/i && $words[$j+1] =~ /^\w+(ing|in|ng|in\')_V/i){
+						$words[$j] = $words[$j]  . "~AUXBE";
+					}
+					if ($words[$j] =~ /^$BE\_/i && $words[$j+1] =~ /_R/ && $words[$j+2] =~ /^\w+(ing|in|ng|in\')_V/i){
+						$words[$j] = $words[$j]  . "~AUXBE";
+					}
+					if ($words[$j] =~ /^$BE\_/i && $words[$j+1] =~ /_R/ && $words[$j+2] =~ /_R/ && $words[$j+3] =~ /^\w+(ing|in|ng|in\')_V/i){
+						$words[$j] = $words[$j]  . "~AUXBE";
+					}
+					if ($words[$j-1] =~ /(^$BE\_|\~PROCONTRACTAUXBE)/i && $words[$j] =~ /^(going|goin|goin\')_V/i && $words[$j+1] =~ /^(to|2)_/i){
+						$words[$j] = $words[$j]  . "~GOINTOBE";
+					}
+					if ($words[$j-2] =~ /(^$BE\_|\~PROCONTRACTAUXBE)/i && $words[$j-1] =~ /_R/ && $words[$j] =~ /^(going|goin|goin\')_V/i && $words[$j+1] =~ /^(to|2)_/i){
+						$words[$j] = $words[$j]  . "~GOINTOBE";
+					}
+					if ($words[$j-3] =~ /(^$BE\_|\~PROCONTRACTAUXBE)/i && $words[$j-2] =~ /_R/ && $words[$j-1] =~ /_R/ && $words[$j+3] =~ /^(going|goin|goin\')_V/i && $words[$j+1] =~ /^(to|2)_/i){
+						$words[$j] = $words[$j]  . "~GOINTOBE";
+					}
+					if ($words[$j-1] =~ /(^$BE\_|\~PROCONTRACTAUXBE)/i && $words[$j] =~ /^(gonna|gna|gnna)_V/i){
+						$words[$j] = $words[$j]  . "~GOINTOBE";
+					}
+					if ($words[$j-2] =~ /(^$BE\_|\~PROCONTRACTAUXBE)/i && $words[$j-1] =~ /_R/ && $words[$j] =~ /^(gonna|gna|gnna)_V/i){
+						$words[$j] = $words[$j]  . "~GOINTOBE";
+					}
+					if ($words[$j-3] =~ /(^$BE\_|\~PROCONTRACTAUXBE)/i && $words[$j-2] =~ /_R/ && $words[$j-1] =~ /_R/ && $words[$j+3] =~ /^(gonna|gna|gnna)_V/i){
+						$words[$j] = $words[$j]  . "~GOINTOBE";
+					}
+					
+					if ($words[$j-1] =~ /(^$BE\_|^$WHCONTRACT\_|\~PROCONTRACTAUXBE)/i && $words[$j] =~ /^\w+(ing|in|ng|in\')_V/i && $words[$j] !~ /(\~GOINTOBE|\~GERUND)/){
+						$words[$j] = $words[$j]  . "~PROGRESSIVE";
+					}
+					if ($words[$j-2] =~ /(^$BE\_|^$WHCONTRACT\_|\~PROCONTRACTAUXBE)/i && $words[$j-1] =~ /_R/ && $words[$j] =~ /^\w+(ing|in|ng|in\')_V/i && $words[$j] !~ /(\~GOINTOBE|\~GERUND)/){
+						$words[$j] = $words[$j]  . "~PROGRESSIVE";
+					}
+					if ($words[$j-3] =~ /(^$BE\_|^$WHCONTRACT\_|\~PROCONTRACTAUXBE)/i && $words[$j-2] =~ /_R/ && $words[$j-1] =~ /_R/ && $words[$j] =~ /^\w+(ing|in|ng|in\')_V/i && $words[$j] !~ /(\~GOINTOBE|\~GERUND)/){
+						$words[$j] = $words[$j]  . "~PROGRESSIVE";
+					}
+				#	if ($words[$j-1] =~ /^$BE\_/i && $words[$j] =~ /^(gonna|gna|gnna|gona)_V/i){
+				#		$words[$j] = $words[$j]  . "~PROGRESSIVE";
+				#	}
+				#	if ($words[$j-2] =~ /^$BE\_/i && $words[$j-1] =~ /_R/ && $words[$j] =~ /^(gonna|gna|gnna|gona)_V/i){
+				#		$words[$j] = $words[$j]  . "~PROGRESSIVE";
+				#	}
+				#	if ($words[$j-3] =~ /^$BE\_/i && $words[$j-2] =~ /_R/ && $words[$j-1] =~ /_R/ && $words[$j] =~ /^(gonna|gna|gnna|gona)_V/i){
+				#		$words[$j] = $words[$j]  . "~PROGRESSIVE";
+				#	}
+					if ($words[$j-1] !~  /^($BE|$GET)\_/i && $words[$j] =~ /\~VERB/ && $words[$j] =~ /^$PAST\_/i && $words[$j] !~ /\~PERFECT/i){
+						$words[$j] = $words[$j]  . "~PAST";
+					} else {
+						if ($words[$j-1] !~ /^($BE|$GET)\_/i && $words[$j] =~ /\w+ed_V/i && $words[$j] =~ /\~VERB/ && $words[$j] !~ /(^need_|\~PERFECT)/i){
+							$words[$j] = $words[$j]  . "~PAST";
+						}
+					}
+					if ($words[$j-2] !~ /^($BE|$GET)\_/i && $words[$j-1] !~ /$ADV/i && $words[$j] =~ /\~VERB/ && $words[$j] =~ /^$PAST\_/i && $words[$j] !~ /\~PERFECT/i){
+						$words[$j] = $words[$j]  . "~PAST";
+					} else {
+						if ($words[$j-2] !~ /^($BE|$GET)\_/i && $words[$j-1] !~ /$ADV/i && $words[$j] =~ /\w+ed_V/i && $words[$j] =~ /\~VERB/ && $words[$j] !~ /(^need_|\~PERFECT)/i){
+							$words[$j] = $words[$j]  . "~PAST";
+						}
+					}
+					if ($words[$j-3] !~ /^($BE|$GET)\_/i && $words[$j-2] !~ /$ADV/i && $words[$j-1] !~ /$ADV/i && $words[$j] =~ /\~VERB/ && $words[$j] =~ /^$PAST\_/i && $words[$j] !~ /\~PERFECT/i){
+						$words[$j] = $words[$j]  . "~PAST";
+					} else {
+						if ($words[$j-3] !~ /^($BE|$GET)\_/i && $words[$j-2] !~ /$ADV/i && $words[$j-1] !~ /$ADV/i && $words[$j] =~ /\w+ed_V/i && $words[$j] =~ /\~VERB/ && $words[$j] !~ /(^need_|\~PERFECT)/i){
+							$words[$j] = $words[$j]  . "~PAST";
+						}
+					}
+					if ($words[$j] =~ /^its_L/ && $words[$j+1] =~ /_A/ && $words[$j+2] =~ /_N/){
+						$words[$j] = $words[$j]  . "~DET~POSSDET";
+					}
+
+					if ($words[$j] =~ /^(its|your)_L/ && $words[$j+1] =~ /_N/ && $words[$j+2] =~ /_V/){
+						$words[$j] = $words[$j]  . "~DET~POSSDET";
+					}
+
+					if ($words[$j] =~ /^its_L/ && $words[$j+1] =~ /_N/ && $words[$j+2] =~ /_P/){
+						$words[$j] = $words[$j]  . "~PROCONTRACTAUXBE";
+					}
+
+					if ($words[$j-1] =~ /_(P|V)/ && $words[$j] =~ /^(its|your)_L/ && $words[$j+1] =~ /_(^|N)/){
+						$words[$j] = $words[$j]  . "~DET~POSSDET";
+					}
+
+##### find pronouns and existential (personal pronouns, demonstratives, reflexives, reciprocal, possessive, indefinite, relative, interrogative, quantifiers)
+
+					if ($words[$j] =~ /^($WHO2|$WHP)\_/i && $words[$j] !~ /(\~ACRONYM|\~RELCLAUSE|\~SUBORDINATOR)/){
+						$words[$j] = $words[$j]  . "~WHW";
+					}
+					if ($words[$j] =~ /^$WHCONTRACT\_/i){
+						$words[$j] = $words[$j]  . "~CONTRACTWH";
+					}
+					
+					if ($words[$j] =~ /^$POSSPRO\_O/i){
+						$words[$j] = $words[$j]  . "~PRO";
+					}
+					if ($words[$j-2] =~ /^$OBJPRO\_/i && $words[$j-1] =~ /^so+_R/ && $words[$j] =~ /^(much|mch)_/){
+						$words[$j] = $words[$j]  . "~ADV";
+					}
+
+					if ($words[$j-1] =~ /_P/i && $words[$j] =~ /^$QUAN\_/i && $words[$j+1] =~ /(_,|_\&)/){
+						$words[$j] = $words[$j]  . "~PRO";
+					}
+					if ($words[$j-1] !~ /_D/ && $words[$j] =~ /^$QUAN\_/i && $words[$j+1] =~ /^(of|ov)_/i){
+						$words[$j] = $words[$j]  . "~PRO";
+					} else {
+						if ($words[$j] =~ /^$QUAN\_/i && $words[$j] !~ /\~ADV/ && $words[$j+1] =~ /_P/i){
+							$words[$j] = $words[$j]  . "~PRO";
+						}
+					}
+					if ($words[$j] =~ /^($OBJPRO|$OTHERPRO)\_/i && $words[$j+1] =~ /^all_/i){
+						$words[$j] = $words[$j]  . "~PRO";
+					}
+					
+					if ($words[$j] =~ /^$QUAN\_/i && $words[$j+1] =~ /^(there_X|dere_X|ther_X|\w+_O|\w+_L)/i){
+						$words[$j] = $words[$j]  . "~PRO";
+					}
+					if ($words[$j-1] =~ /^pretty_/i && $words[$j] =~ /^$QUAN\_/i && $words[$j+1] =~ /_V/){
+						$words[$j] = $words[$j]  . "~MULTIADV";
+					}
+					if ($words[$j-1] !~ /(_O|_N|_\^|_R)/ && $words[$j] =~ /^$QUAN\_/i && $words[$j+1] =~ /_V/){
+						$words[$j] = $words[$j]  . "~PRO";
+					}
+					if ($words[$j] =~ /_O/ && $words[$j] !~ /(\~MDVERB|\~VERB|\~ACRONYM|\~PRO|\~DET|\~DEMDET|\~WH|\~THATVCOMP|\~RELCLAUSE|\~SUBORDINATOR)/){
+						$words[$j] = $words[$j]  . "~PRO";
+					}	
+					if ($words[$j] =~ /_L/ && $words[$j] !~ /(\~ACRONYM|\~PRO|\~DET|\~DEMDET|\~WH|\~THATVCOMP|\~RELCLAUSE)/){
+						$words[$j] = $words[$j]  . "~PRO";
+					}	
+					if ($words[$j] =~ /^$EXISTVB\_(X|Y|L)/i){
+						$words[$j] = $words[$j]  . "~EXIST";
+						} else {
+							if ($words[$j] =~ /^$EXIST\_/i && $words[$j+1] =~ /^($BE|$MODAL|$VBFOREXIST)\_/i){
+								$words[$j] = $words[$j]  . "~EXIST";
+							} else {
+								if ($words[$j] =~ /^there's_/i){
+									$words[$j] = $words[$j]  . "_EXIST";
+								}
+							}
+						}
+					if ($words[$j] =~ /^(this|dis|ths|these|dese|thse|those)_O/i){
+						$words[$j] = $words[$j]  . "~DEMPRO";
+					} else {
+						if ($words[$j] =~ /^$DEM\_/i && $words[$j+1] =~ /[\:\!\?\.\,]_,/){
+							$words[$j] = $words[$j]  . "~DEMPRO";
+						} else {
+							if ($words[$j] =~ /^$DEM\_/i && $words[$j+1] =~ /^$WHP\_/i){
+								$words[$j] = $words[$j]  . "~DEMPRO";
+							} else {
+								if ($words[$j] =~ /^$DEM\_/i && $words[$j+1] =~ /^(and|\&|nd|n)_\&/i){
+									$words[$j] = $words[$j]  . "~DEMPRO";
+								} else {
+									if ($words[$j] =~ /^(that's|tht's|dat's)_/i){
+										$words[$j] = $words[$j] . "~DEMPRO";
+									} else {
+										if ($words[$j-1] =~ /[\!\?\.\"]_,/ && $words[$j] =~ /^$DEM\_O/i && $words[$j+1] =~ /^$BE\_/){
+											$words[$j] = $words[$j]  . "~DEMPRO";
+										} else {
+											if ($words[$j-1] =~ /[\!\?\.\"]_,/ && $words[$j] =~ /^$DEM\_O/i && $words[$j+1] =~ /^$MODAL\_/){
+												$words[$j] = $words[$j]  . "~DEMPRO";
+											} 
+										}
+									}
+								}
+							}
+						}
+					}	
+					if ($words[$j] =~ /^that_/i && $words[$j] =~ /\~PRO/ && $words[$j+1] =~ /[\!\.\?]_,/){
+						$words[$j] = $words[$j]  . "~DEMPRO";
+					} 
+					if ($words[$j] =~ /^that_/i && $words[$j] !~ /\~DEMPRO/ && $words[$j+1] =~ /[\!\.\?]_,/){
+						$words[$j] = $words[$j]  . "~DEMPRO";
+					}
+					if ($words[$j] =~ /^that_/i && $words[$j] !~ /\~DEMPRO/ && $words[$j] =~ /\~PRO/){
+						$words[$j] = $words[$j]  . "~DEMPRO";
+					}
+					if ($words[$j-1] =~ /_V/ && $words[$j] =~ /^so_/i && $words[$j+1] =~ /[\!\?\.]_,/){
+						$words[$j] = $words[$j]  . "~PRO";
+					}
+					if ($words[$j] =~ /^$BODONETH\_/i){
+						$words[$j] = $words[$j]  . "~PRO";
+						}
+					if ($words[$j] =~ /^$BODONETHS\_/i){
+						$words[$j] = $words[$j]  . "~PRO";
+						}
+
+
+###### find WH clause before intj
+
+					if ($words[$j-1] =~ /^($PUBV|$PRVV|$SUAV)\_V/i && $words[$j] =~ /^(what's|wots|wot's|wat's|wht's|where's|wer's|wers|whers|wher's|whre's|whres|when's|whens|wen's|wens|whn's|whns|wn's|how's|hows|hw's|hws|why's|whys|y's|who's|whos)_/i && $words[$j+1] !~ /\w+_V/i){
+						$words[$j] = $words[$j]  . "~WHCLAUSE";
+					}
+					if ($words[$j-1] =~ /^($PUBV|$PRVV|$SUAV)\_V/i && $words[$j] =~ /^($WHP|$WHO2)\_/i && $words[$j+1] =~ /(~PROVDO|~HAVEMV|~BEMV)/i){
+						$words[$j] = $words[$j]  . "~WHCLAUSE";
+					} else {
+						if ($words[$j-1] =~ /^($PUBV|$PRVV|$SUAV)\_V/i && $words[$j] =~ /^($WHP|$WHO2)\_/i && $words[$j+1] =~ /\w+_(V|L)/i && $words[$j+1] !~ /(~PROCONTRACTAUXBE|~PROCONTRACTAUXHAVE|~PROCONTRACTMDPRED|~AUXBE|~AUXDO|~AUXHAVE|$MODAL\_)/){
+							$words[$j] = $words[$j]  . "~WHCLAUSE";
+						}
+					}	
+					if ($words[$j-1] =~ /^($PUBV|$PRVV|$SUAV)\_V/i && $words[$j] =~ /^($WHP|$WHO2)\_/i && $words[$j+1] =~ /\w+_(\$|D|\^|O|A|N|R)/i && $words[$j+1] !~ /\~VERB/){
+						$words[$j] = $words[$j]  . "~WHCLAUSE";
+					}
+					if ($words[$j-2] =~ /^($PUBV|$PRVV|$SUAV)\_V/i && $words[$j-1] =~ /\w+_(P|T)/i && $words[$j] =~ /^(what's|wots|wot's|wat's|wht's|where's|wer's|wers|whers|wher's|whre's|whres|when's|whens|wen's|wens|whn's|whns|wn's|how's|hows|hw's|hws|why's|whys|y's|who's|whos)_/i && $words[$j+1] !~ /\w+_V/i){
+						$words[$j] = $words[$j]  . "~WHCLAUSE";
+					}
+					if ($words[$j-2] =~ /^($PUBV|$PRVV|$SUAV)\_V/i && $words[$j-1] =~ /\w+_(P|T)/i && $words[$j] =~ /^($WHP|$WHO2)\_/i && $words[$j+1] =~ /(~PROVDO|~HAVEMV|~BEMV)/i){
+						$words[$j] = $words[$j]  . "~WHCLAUSE";
+					} else {
+						if ($words[$j-2] =~ /^($PUBV|$PRVV|$SUAV)\_V/i && $words[$j-1] =~ /\w+_(P|T)/i && $words[$j] =~ /^($WHP|$WHO2)\_/i && $words[$j+1] =~ /\w+_V/i && $words[$j+1] !~ /(~AUXBE|~AUXDO|~AUXHAVE|$MODAL\_)/){
+							$words[$j] = $words[$j]  . "~WHCLAUSE";
+						}
+					}	
+					if ($words[$j-2] =~ /^($PUBV|$PRVV|$SUAV)\_V/i && $words[$j-1] =~ /\w+_(P|T)/i && $words[$j] =~ /^($WHP|$WHO2)\_/i && $words[$j+1] =~ /\w+_(\$|D|\^|O|A|N|R)/i && $words[$j+1] !~ /\~VERB/){
+						$words[$j] = $words[$j]  . "~WHCLAUSE";
+					}
+
+
+
+##### find negation and interjections
+
+					
+					if ($words[$j] =~ /^$NEG\_/i){
+						$words[$j] = $words[$j]  . "~NEG";
+					}
+					if ($words[$j] =~ /^\w+n't\_/i && $words[$j] !~ /\~NEG/){
+						$words[$j] = $words[$j]  . "~NEG";
+					}
+					if ($words[$j] =~ /_\!/ && $words[$j] !~ /(\~ADVERB|\~DET|\~WHCLAUSE)/){
+						$words[$j] = $words[$j]  . "~INTJ";
+					}
+					
+					if ($words[$j] =~ /^(no|no+|na|na+|nah|na+h|nah+)_\!/i && $words[$j] !~ /(\~ADVERB|\~DET)/){
+						$words[$j] = $words[$j]  . "~NEGINTJ";
+					} else {
+						if ($words[$j] =~ /^(yes|yer|yer+|ye+r|ye|ye+|yup|yeah|yups|yeap|yeh|yh|ys|ya|ye+s|yes+|yu+p|yup+|ye+ap|ye+h|yeh+|yh+|ys+|ya+|yah|yah+|ya+h)_\!/i){
+							$words[$j] = $words[$j]  . "~POSINTJ";
+						} else {
+							if ($words[$j] =~ /^$LAUGH\_/i){
+								$words[$j] = $words[$j]  . "~LAUGH";
+							} else {
+								if ($words[$j] =~ /(_\!|\~INTJ)/ && $words[$j] !~ /(\~LAUGH|\~DET|\~ADVERB|\~POSINTJ|\~WHCLAUSE)/){
+									$words[$j] = $words[$j]  . "~OTHRINTJ";
+								}
+							}
+						}
+					}
+
+					if ($words[$j] =~ /^(no|no+)_/i && $words[$j+1] =~ /^(longer|longa|more)_/i && $words[$j+2] =~ /(_A|_V)/){
+						$words[$j] = $words[$j]  . "~SYNNEG";
+					} else {
+						if ($words[$j] =~ /^(no|no+)_/i && $words[$j+1] =~ /(_N|_\$|_V)/i){
+							$words[$j] = $words[$j]  . "~SYNNEG";
+						} else {
+							if ($words[$j] =~ /^(no|no+)_/i && $words[$j+1] =~ /_A/ && $words[$j+2] =~ /(_N|_\$)/){
+								$words[$j] = $words[$j]  . "~SYNNEG";
+							}
+						}
+					}		
+					if ($words[$j] =~ /^(neither|nor)_/i){
+						$words[$j] = $words[$j]  . "~SYNNEG";
+					}
+					if ($words[$j] =~ /^$ANALNEG\_/i){
+						$words[$j] = $words[$j]  . "~ANALNEG";
+					}
+					if ($words[$j] =~ /\w+n\'t_/i && $words[$j] !~ /\~ANALNEG/){
+						$words[$j] = $words[$j]  . "~ANALNEG";
+					}
+					
+###### find comparatives before proper nouns 
+
+					if ($words[$j] =~ /^(b|\w{4,})est_A/i && $words[$j] !~ /^(dishonest)/i){
+						$words[$j] = $words[$j]  . "~SUPERLATIVE";
+					}
+					if ($words[$j] =~ /^(most|mst)_/i && $words[$j+1] =~ /\w+_A/i){
+						$words[$j] = $words[$j]  . "~SUPERLATIVE";
+					}
+					if ($words[$j] =~ /^(lowest|worst|oldest|driest|finest|latest|newest)_/i){
+						$words[$j] = $words[$j]  . "~SUPERLATIVE";
+					}
+					if ($words[$j-1] !~ /^at_/i && $words[$j]=~ /^least_/i){
+						$words[$j] = $words[$j]  . "~SUPERLATIVE"
+					}
+					if ($words[$j] =~ /^(bett|\w{5,})er_A/i && $words[$j] !~ /^(whether|transgender)_A/i){
+						$words[$j] = $words[$j]  . "~COMPARATIVE";
+					}
+					if ($words[$j] =~ /^(more|mre|mor)_/i && $words[$j+1] =~ /\w+_A/i){
+						$words[$j] = $words[$j]  . "~COMPARATIVE";
+					}
+					if ($words[$j] =~ /(\>|\<)/){
+						$words[$j] = $words[$j]  . "~COMPARATIVE";
+					}
+					if ($words[$j] =~ /^(lower|colder|cooler|darker|faster|duller|drier|finer|harder|later|longer|newer|richer|softer|easier|braver|calmer|busier|fatter|taller|bigger|sadder|worse|less|older|higher|fewer)_A/i){
+						$words[$j] = $words[$j]  . "~COMPARATIVE";
+					}
+
+
+###### find types of abuse before proper nouns
+
+					if ($words[$j] =~ /^$ABUSE\_/i){
+						$words[$j] = $words[$j]  . "~ABUSESWE";
+					}
+					if ($words[$j] =~ /^$SEXACT\_/i){
+						$words[$j] = $words[$j]  . "~SEXACT";
+					}
+					if ($words[$j] =~ /^$RACIST\_/i && $words[$j] !~ /\~PRPN/){
+						$words[$j] = $words[$j]  . "~RACIST";
+					}
+					if ($words[$j] =~ /^$PROMISCUITY\_/i){
+						$words[$j] = $words[$j]  . "~PROMISCUITY";
+					}
+					if ($words[$j] =~ /^$HOMOPHOBIC\_/i){
+						$words[$j] = $words[$j]  . "~HOMOPHOBIC";
+					}
+					if ($words[$j] =~ /^$MISCALSWEAR\_/i){
+						$words[$j] = $words[$j]  . "~MISCALSWEAR";
+					}
+					if ($words[$j] =~ /^$BODYSWEAR\_/i){
+						$words[$j] = $words[$j]  . "~BODYSWEAR";
+					}
+					if ($words[$j] =~ /^$PERSONALITYSWEAR\_/i){
+						$words[$j] = $words[$j]  . "~SWEARPERSONALITY";
+					}
+					if ($words[$j] =~ /^$STUPIDITY\_/i){
+						$words[$j] = $words[$j]  . "~STUPIDITYSWE";
+					}
+
+
+##### find proper nouns (proper nouns and possessive proper nouns)
+
+					if ($words[$j] =~ /_\^/ && $words[$j] !~ /(\~NOUN|\~NUMNOUN|\~NUMDET|\~QUOT|\~PRO|\~CONTRACTWH|\~EXIST|\~TITLE|\~LAUGH|\~OTHRINTJ|\~ABUSESWE|\~SEXACT|\~PROMISCUITY|\~HOMOPHOBIC|\~MISCALSWEAR|\~SWEARPERSONALITY|\~BODYSWEAR|\~STUPIDITYSWE|\~VERB|\~COMPARATIVE)/){
+						$words[$j] = $words[$j]  . "~PRPN";
+					}
+					if ($words[$j] =~ /_Z/ && $words[$j] !~ /\~PRO/){
+						$words[$j] = $words[$j]  . "~PRPN";
+					}
+
+##### find adverbs (-ly_A , interrogative adverbs, quantifiers, otheradv, downtoner, amplifiers, place and time advs, frequency adv)
+					
+					if ($words[$j-1] =~ /^$BEPROCONTRACT\_/i && $words[$j] =~ /_A/){
+						$words[$j] = $words[$j]  . "~ADJ";	
+					}
+					if ($words[$j-2] =~ /^$BEPROCONTRACT\_/i && $words[$j-1] =~ /_R/ && $words[$j] =~ /_A/){
+						$words[$j] = $words[$j]  . "~ADJ";	
+					}
+					if ($words[$j] =~ /^$ADJLY\_/i){
+						$words[$j] = $words[$j]  . "~ADJ";
+					}
+					if ($words[$j] =~ /^\w+ly_A/i && $words[$j] !~ /\~ADJ/ && $words[$j+1] =~ /_A/ && $words[$j+2] =~ /_A/ && $words[$j+3] =~ /(_N|\~NOUN|\~PRPN|_\^|_\$)/){
+						$words[$j] = $words[$j]  . "~ADJ";
+					} else {
+						if ($words[$j] =~ /^\w+ly_A/i && $words[$j] !~ /\~ADJ/ && $words[$j+1] =~ /_A/ && $words[$j+2] =~ /(_N|\~NOUN|\~PRPN|_\^|_\$)/){
+							$words[$j] = $words[$j]  . "~ADJ";
+						} else {
+							if ($words[$j] =~ /^\w+ly_A/i && $words[$j] !~ /\~ADJ/ && $words[$j+1] =~ /(_N|\~NOUN|\~PRPN|_\^|_\$)/){
+								$words[$j] = $words[$j]  . "~ADJ";
+							} else {
+								if ($words[$j] =~ /^\w+ly_A/i && $words[$j] !~ /\~ADJ/ && $words[$j+1] =~ /\~DET/ && $words[$j+2] =~ /(_N|\~NOUN|\~PRPN|_\^|_\$)/){
+									$words[$j] = $words[$j]  . "~ADJ";	
+								} else {
+									if ($words[$j] =~ /^\w+ly_A/i && $words[$j] !~ /(\~ADJ|\~ADV)/ && $words[$j+1] !~ /(_N|\~NOUN|\~PRPN|_\^|_\$)/){
+										$words[$j] = $words[$j]  . "~ADV";
+									}
+								}
+							}
+						}	
+					}	
+
+					if ($words[$j] =~ /^$SPATPRO\_/i && $words[$j] !~ /~EXIST/){
+						$words[$j] = $words[$j]  . "~ADV";
+					}
+					if ($words[$j] =~ /^$AMPLIFIER\_R/i && $words[$j] !~ /\~SUBORDINATOR/){
+						$words[$j] = $words[$j]  . "~ADV";
+					} 
+					if ($words[$j] =~ /^(so|so+)_R/i && $words[$j] !~ /(\~SUBORDINATOR|\~PRO)/){
+						$words[$j] = $words[$j]  . "~ADV";
+					} 
+					if ($words[$j] =~ /^way_/i && $words[$j+1] =~ /^(too_|off_|_A)/i){
+						$words[$j] = $words[$j] . "~ADV";
+					}
+					if ($words[$j-1] =~ /^by_P/i && $words[$j] =~ /^far_/i){
+						$words[$j-1] = $words[$j-1] . "~MULTIADV";
+						$words[$j] = $words[$j] . "~MULTIADV";
+					} 
+					if ($words[$j] =~ /^$DOWNTNR\_/i){
+						$words[$j] = $words[$j]  . "~ADV";
+					} 
+					if ($words[$j-1] =~ /^a_D/i && $words[$j] =~ /^(bit|little|lil)_/i){
+						$words[$j] = $words[$j]  . "~MULTIADV";
+					} 
+					if ($words[$j-1] =~ /^a_D/i && $words[$j] =~ /^(little|lil|tiny|tny)_/i && $words[$j] !~ /\~MULTIADV/ && $words[$j+1] =~ /bit_/i){
+						$words[$j] = $words[$j]  . "~MULTIADV";
+					} 
+					if ($words[$j-1] =~ /^only_/i && $words[$j] =~ /^(just|jst)_/i){
+						$words[$j] = $words[$j]  . "~MULTIADV";
+					}
+					if ($words[$j-1] =~ /^(sort|kind|srt|knd)_/i && $words[$j] =~ /^(of|ov)_/i){
+						$words[$j] = $words[$j]  . "~MULTIADV";
+					} 
+					if ($words[$j-1] =~ /^(just|jst)_/i && $words[$j] =~ /^(about|abt|abowt)_/i){
+						$words[$j] = $words[$j]  . "~MULTIADV";
+					} 
+					if ($words[$j-2] =~ /^(more|mre|mor)_/i && $words[$j-1] =~ /^or_/i && $words[$j] =~ /^(less|lss|les)_/i){
+						$words[$j] = $words[$j]  . "~MULTIADV";
+					}
+					if ($words[$j] =~ /^$PLACADV\_R/i && $words[$j] !~ /(\~SUBORDINATOR|\~MULTIADV)/){
+						$words[$j] = $words[$j]  . "~ADV";
+					} 
+					if ($words[$j] =~ /^$TIMEADV\_/i && $words[$j] !~ /\~SUBORDINATOR/){
+						$words[$j] = $words[$j]  . "~ADV";
+					} 
+					if ($words[$j-1] =~ /^(last|next|lst|nxt|this)_/i && $words[$j] =~ /^(morning|mornin|afternoon|evening|night|nite|year|yr|month|mnth|week|January|Jan|February|Feb|March|April|May|June|July|August|Aug|Sepetember|Sep|October|Oct|November|Nov|December|Dec|Monday|Mon|Tuesday|Tues|Wednesday|Wed|Thursday|Thurs|Friday|Fri|Saturday|Sat|Sunday|Sun)_/i){
+						$words[$j] = $words[$j]  . "~MULTIADV";
+					}
+
+					if ($words[$j] =~ /^$USUALITY\_/i){
+						$words[$j] = $words[$j]  . "~ADV";
+					}
+					if ($words[$j-1] =~ /^($BE|$COPULAR2)\_/ && $words[$j] =~ /^$QUAN\_/i && $words[$j+1] =~ /_A/i && $words[$j+2] !~ /_N/){
+						$words[$j] = $words[$j]  . "~ADV";
+					}
+					if ($words[$j-1] =~ /(_O|_N|_\^)/ && $words[$j] =~ /^$QUAN\_/i && $words[$j+1] =~ /_V/i){
+						$words[$j] = $words[$j]  . "~ADV"; #QFLOATADV
+					} else {
+						if ($words[$j-1] =~ /(_O|_N|[^\.]_\^)/ && $words[$j] =~ /^$QUAN\_/i && $words[$j] !~ /(\~DET|\~PRO|\~PREDET)/ && $words[$j+1] !~ /^(year|yr|month|day|dai|time|morning|mornin|night|nght|second|minute|hour)_/i && $words[$j+1] !~ /_(P|\,|D)/){
+							$words[$j] = $words[$j]  . "~ADV"; #QFLOATADV
+						}
+						}
+
+					if ($words[$j] =~ /_R/ && $words[$j] !~ /(\~WH|\~NEG|\~ADV|\~MULTIADV|\~QUOT|\~CNTRSTCONJ|\~SUBORDINATOR|\~MULTIWVB|\~PRO|\~EXIST)/){
+						$words[$j] = $words[$j]  . "~ADV";
+					}
+
+
+##### find adjectives
+
+					if ($words[$j] =~ /_A/i && $words[$j] !~ /(\~DET|\~PREDET|\~ADV|\~ADJ|\~INTJ)/ && $words[$j+1] =~/_N/i){
+						$words[$j] = $words[$j]  . "~ADJ";
+					}
+					if ($words[$j-1] =~ /^($BE|$COPULAR2)\_V/i && $words[$j] =~ /_A/ && $words[$j] !~ /(\~DET|\~PREDET|\~ADV|\~ADJ)/){
+						$words[$j] = $words[$j]  . "~ADJ";
+					} else {
+						if ($words[$j-2] =~ /^($BE|$COPULAR2)\_V/i && $words[$j-1] =~ /_R/ && $words[$j] =~ /_A/ && $words[$j] !~ /(\~DET|\~PREDET|\~ADV|\~ADJ)/){
+							$words[$j] = $words[$j]  . "~ADJ";
+						} 
+					}
+					if ($words[$j-2] =~ /^(turn|turns|turned|turning|end|ends|ending|ended|wind|wound|winds|winding)_V/i && $words[$j-1] =~ /^up_/i && $words[$j] =~ /_A/){
+						$words[$j] = $words[$j]  . "~ADJ";
+					} else {
+						if ($words[$j-3] =~ /^(turn|turns|turned|turning|end|ends|ending|ended|wind|wound|winds|winding)_V/i && $words[$j-2] =~  /^up_/i && $words[$j-1] =~ /_R/ && $words[$j] =~ /_A/){
+							$words[$j] = $words[$j]  . "~ADJ";
+						} 
+					}
+					if ($words[$j] =~ /_A/ && $words[$j] !~ /(\~DET|\~NOUN|\~ADV|\~ADJ|\~PRO|\~VERB|\~PREDET|\~INTJ)/){
+						$words[$j] = $words[$j]  . "~ADJ";
+					}
+					
+
+##### find prepositions (not infinitive)
+
+
+					if ($words[$j] =~ /^$PREPDEC\_/i && $words[$j] !~ /(\~INFINITIVE|\~SPLINFINITIVE|\~SUBORDINATOR|\~VERB|\~MULTIWVB)/ && $words[$j+1] =~ /_(Z|N|\^|\$|\@|O)/){
+						$words[$j] = $words[$j]  . "~PREP";
+					}
+					if ($words[$j] =~ /^$PREPDEC\_/i && $words[$j] !~ /(\~INFINITIVE|\~SPLINFINITIVE|\~SUBORDINATOR|\~VERB|\~MULTIWVB)/ && $words[$j+1] =~ /^$QUAN\_\w_\~PRO/){
+						$words[$j] = $words[$j]  . "~PREP";
+					}
+
+					if ($words[$j] =~ /^$PREPDEC\_/i && $words[$j] !~ /(\~INFINITIVE|\~SPLINFINITIVE|\~SUBORDINATOR|\~VERB|\~MULTIWVB)/ && $words[$j+1] =~ /_D/ && $words[$j+2] =~ /_(Z|N|\^|\$|\@)/){
+						$words[$j] = $words[$j]  . "~PREP";
+					}
+					if ($words[$j] =~ /^$PREPDEC\_/i && $words[$j] !~ /(\~INFINITIVE|\~SPLINFINITIVE|\~SUBORDINATOR|\~VERB|\~MULTIWVB)/ && $words[$j+1] =~ /(_A|\~PREDET)/ && $words[$j+2] =~ /_(Z|N|\^|\$|\@|D)/){
+						$words[$j] = $words[$j]  . "~PREP";
+					}
+					if ($words[$j] =~ /^(because|bcos|becos|cos|bcoz|becoz|'cause|b'cause|b'cos)\_/i && $words[$j] !~ /(\~SUBORDINATOR)/ && $words[$j+1] =~ /(of|ov)_/){
+						$words[$j] = $words[$j]  . "~PREP";
+					}
+					if ($words[$j] =~ /^$PREPDEC\_/i && $words[$j] !~ /(\~INFINITIVE|\~SPLINFINITIVE|\~SUBORDINATOR|\~VERB|\~MULTIWVB)/ && $words[$j+1] =~ /_D/ && $words[$j+2] =~ /_A/ && $words[$j+3] =~ /_(Z|N|\^|\$)/){
+						$words[$j] = $words[$j]  . "~PREP";
+					}
+					if ($words[$j] =~ /^$PREPDEC\_/i && $words[$j] !~ /(\~INFINITIVE|\~SPLINFINITIVE|\~SUBORDINATOR|\~VERB|\~MULTIWVB)/ && $words[$j+1] =~ /_D/ && $words[$j+2] =~ /_R/ && $words[$j+3] =~ /_A/ && $words[$j+4] =~ /_(Z|N|\^|\$)/){
+						$words[$j] = $words[$j]  . "~PREP";
+					}
+					if ($words[$j] =~ /^$PREPDEC\_/i && $words[$j] !~ /(\~INFINITIVE|\~SPLINFINITIVE|\~SUBORDINATOR|\~VERB|\~MULTIWVB)/ && $words[$j+1] =~ /_D/ && $words[$j+2] =~ /_A/ && $words[$j+3] =~ /_A/ && $words[$j+4] +~ /_(Z|N|\^|\$)/){
+						$words[$j] = $words[$j]  . "~PREP";
+					}
+					if ($words[$j] =~ /^$PREPDEC\_/i && $words[$j] !~ /(\~INFINITIVE|\~SPLINFINITIVE|\~SUBORDINATOR|\~VERB|\~MULTIWVB)/ && $words[$j+1] =~ /\~PRO/){
+						$words[$j] = $words[$j]  . "~PREP";
+					}	
+					if ($words[$j] =~ /^$PREPDEC\_/i && $words[$j] !~ /(\~INFINITIVE|\~SPLINFINITIVE|\~SUBORDINATOR|\~PREP|\~VERB|\~MULTIWVB)/ && $words[$j+1] =~ /_D/){
+						$words[$j] = $words[$j]  . "~PREP";
+					}
+					if ($words[$j] =~ /^$PREPDEC\_/i && $words[$j] !~ /(\~INFINITIVE|\~SPLINFINITIVE|\~SUBORDINATOR|\~VERB|\~MULTIWVB)/ && $words[$j+1] =~ /_A/ && $words[$j+2] =~ /_&/ && $words[$j+3] =~ /_A/ && $words[$j+4] =~ /_(Z|N|\^|\$|\@)/){
+						$words[$j] = $words[$j]  . "~PREP";
+					}
+					if ($words[$j] =~ /^$PREPDEC\_/i && $words[$j] !~ /(\~INFINITIVE|\~SPLINFINITIVE|\~SUBORDINATOR|\~VERB|\~MULTIWVB)/ && $words[$j+1] =~ /\~PREDET/){
+						$words[$j] = $words[$j]  . "~PREP";
+					}
+					if ($words[$j] =~ /^out_/i && $words[$j] !~ /\~MULTIWVB/ && $words[$j+1] =~ /^of_/ && $words[$j+2] =~ /_(Z|D|N|\^|\$|\@)/){
+						$words[$j] = $words[$j]  . "~PREP";
+					}	
+					if ($words[$j] =~ /^up_/i && $words[$j] !~ /\~MULTIWVB/ && $words[$j+1] =~ /^to_/ && $words[$j+2] =~ /_(Z|D|N|\^|\$|\@)/){
+						$words[$j] = $words[$j]  . "~PREP";
+					}
+					if ($words[$j-2] =~ /_D/ && $words[$j-1] =~ /_N/ && $words[$j] =~ /^$PREPDEC\_/i && $words[$j] !~ /(\~INFINITIVE|\~SPLINFINITIVE|\~PREP|\~SUBELIPSUBJECT|\~SUBORDINATOR)/){
+						$words[$j] = $words[$j]  . "~PREP";
+					}	
+					if ($words[$j-3] =~ /_D/ && $words[$j-2] =~ /_A/ && $words[$j-1] =~ /_N/ && $words[$j] =~ /^$PREPDEC\_/i && $words[$j] !~ /(\~INFINITIVE|\~SPLINFINITIVE|\~PREP|\~SUBELIPSUBJECT|\~SUBORDINATOR)/){
+						$words[$j] = $words[$j]  . "~PREP";
+					}	
+					if ($words[$j-1] =~ /_T/ && $words[$j] =~ /_P/){
+						$words[$j] = $words[$j]  . "~PREP";
+					}
+					if ($words[$j] =~ /^$PREPDEC\_/i && $words[$j] !~ /(\~INFINITIVE|\~SPLINFINITIVE|\~SUBORDINATOR|\~VERB|\~MULTIWVB)/ && $words[$j+1] =~ /_R/ && $words[$j+2] =~ /_A/ && $words[$j+3] =~ /_(Z|N|\^|\$|\@)/){
+						$words[$j] = $words[$j]  . "~PREP";
+					}
+					if ($words[$j] =~ /^$PREPDEC\_/i && $words[$j] !~ /(\~INFINITIVE|\~SPLINFINITIVE|\~SUBORDINATOR|\~VERB|\~MULTIWVB)/ && $words[$j+1] =~ /_A/ && $words[$j+2] =~ /_A/ && $words[$j+3] =~ /_(Z|N|\^|\$|\@)/){
+						$words[$j] = $words[$j]  . "~PREP";
+					}
+
+
+##### find coordinators
+
+					if ($words[$j] =~ /\w+[^(but|bt)]_&/i && $words[$j] !~ /~ACRONYM/){
+						$words[$j] = $words[$j]  . "~CCONJ";
+					}
+					if ($words[$j] =~ /\W+_&/ && $words[$j] !~ /~ACRONYM/){
+						$words[$j] = $words[$j]  . "~CCONJ";
+					}
+					if ($words[$j] =~ /^($RESULT_CONJ|$SUMMAT_CONJ|$LIST_CONJ)\_/i){
+						$words[$j] = $words[$j]  . "~OTHRCONJ"
+					}
+								
+					if ($words[$j-1] =~ /^in_/i && $words[$j] =~ /^(particular|addition|conclusion|sum|summary|consequence)_/i){
+						$words[$j] = $words[$j]  . "~OTHRCONJ";
+					}
+					
+					if ($words[$j-1] =~ /^(in|by)_/i && $words[$j] =~ /^(comparison|contrast)_/i){
+						$words[$j] = $words[$j]  . "~CNTRSTCONJ";
+					}
+					if ($words[$j-2] =~ /^in_/i && $words[$j-1] =~ /^(spite|spte)_/i && $words[$j] =~ /^(of|ov)_/i){
+						$words[$j] = $words[$j]  . "~CNTRSTCONJ";
+					}
+					if ($words[$j-2] =~ /^on_/i && $words[$j-1] =~ /$DEFART\_/i && $words[$j] =~ /^contrary_/i){
+						$words[$j] = $words[$j]  . "~CNTRSTCONJ";
+					}
+					if ($words[$j-3] =~ /^on_/i && $words[$j-2] =~ /$DEFART\_/i && $words[$j-1] =~ /^(one|other|ova|1)_/i && $words[$j] =~ /^hand_/i){
+						$words[$j] = $words[$j]  . "~CNTRSTCONJ";
+					}
+					if ($words[$j] =~ /^bt_\&/i){
+						$words[$j] = $words[$j]  . "~CNTRSTCONJ";
+					}
+					if ($words[$j] =~ /^$CNTRST_CONJ\_/i && $words[$j] !~ /(\~SUBORDINATOR|\~SUBELIPSUBJECT|\~NOUN)/){
+						$words[$j] = $words[$j]  . "~CNTRSTCONJ";
+					}
+					if ($words[$j-1] =~ /_V/ && $words[$j] =~ /^(yet|yt)_/i){
+						$words[$j] = $words[$j]  . "~TIMEADV"
+					} else {
+						if ($words[$j] =~ /^(yet|yt)_/i && $words[$j+1] =~ /_V/i){
+							$words[$j] = $words[$j]  . "~TIMEADV"
+						} else {
+							if ($words[$j] =~ /^(yet|yt)_/ && $words[$j] =~ /_\,/i){
+								$words[$j] = $words[$j]  . "~TIMEADV"
+							} else {
+								if ($words[$j-1] =~ /^yet_/i && $words[$j] =~ /_(D|\^|N|O|L)/i){
+									$words[$j] = $words[$j]  . "~CNTRSTCONJ"
+								}
+							}
+						}
+					}		
+
+##### find nouns (nominalisationsX and nounsX and possessive nounsX, cardinalsX, ordinalsX)
+
+				
+					if ($words[$j] =~ /^$ORD\_/i && $words[$j] !~ /\~DET/ && $words[$j] !~ /forth_R/i && $words[$j+1] !~ /_(N|\$|\^)/){
+						$words[$j] = $words[$j]  . "~NOUN";
+						} else {
+							if ($words[$j] =~ /_\$/i && $words[$j] !~ /\~DET/ && $words[$j+1] !~ /_(\$|N)/i){
+								$words[$j] = $words[$j]  . "~NOUN";
+							} else {
+								if ($words[$j] =~ /^(million|millions|hundreds|hundred|thousands|thousand|tens|ten|billion|billions|trillion|trillions)_/i && $words[$j] !~ /\~DET/ && $words[$j+1] !~ /_(N|\$|\^)/i){
+									$words[$j] = $words[$j]  . "~NOUN";
+								}
+							}	
+						}
+					if ($words[$j] =~ /(\w+s|\w+'s)_S/i){					#perhaps I need to change this tag on the tagger or I need to do \w+'s_S or \w+s_S'
+						$words[$j] = $words[$j]  . "~NOUN";
+					}
+					if ($words[$j] =~ /(action|\w{3,}tions?|\w{3,}ments?|\w{3,}ness|\w{3,}nesses|\w{3,}ity|\w{3,}ities)_N/i){
+							$words[$j] = $words[$j]  . "~NOMIN";
+						} else {
+							if ($words[$j] =~ /_N/i && $words[$j] !~ /(\~VERB|\~NOUN|\~NOMIN|\~DET|\~PRO|\~ACRONYM|\~QUOT|\~ADV|\~INTJ)/){
+								$words[$j] = $words[$j]  . "~NOUN";
+							}
+						}
+
+					
+
+
+
+
+
+##### FOLLOWING FIXED TAGGER
+
+##### specify types of subordinators
+					
+					if ($words[$j] =~ /^$CONDISUB\_/i && $words[$j] =~ /\~SUBORDINATOR/){
+						$words[$j] = $words[$j]  . "~CONDISUB";
+					}
+					if ($words[$j] =~ /^$CONDISUB\_/i && $words[$j] !~ /\~CONDISUB/){
+						$words[$j] = $words[$j]  . "~CONDISUB";
+					}
+					if ($words[$j-2] =~ /^on_/i && $words[$j-1] =~ /^(condition|conditon|cndition)_/i && $words[$j] =~ /^(that|tht|dat)_/i && $words[$j] =~ /\~SUBORDINATOR/){
+						$words[$j] = $words[$j]  . "~CONDISUB";
+					}
+					if ($words[$j] =~ /^$CAUSESUB\_P/i && $words[$j] =~ /(\~SUBORDINATOR|\~SUBELIPSUBJECT)/){
+						$words[$j] = $words[$j]  . "~CAUSESUB";
+					}
+					if ($words[$j] =~ /^bc_P/i){
+						$words[$j] = $words[$j]  . "~CAUSESUB";
+					}
+					if ($words[$j] =~ /^(now|nw)_/i && $words[$j+1] =~ /^(that|tht|dat)_/i && $words[$j] =~ /\~SUBORDINATOR/){
+						$words[$j] = $words[$j]  . "~CAUSESUB";
+					}
+					if ($words[$j] =~ /^(inasmuch|inazmuch|inasmch|inazmch)_/i && $words[$j+1] =~ /^(as|az)_/i){
+						$words[$j+1] = $words[$j+1]  . "~CAUSESUB";
+					}
+					if ($words[$j] =~ /^$CONCESUB\_/i && $words[$j] =~ /(\~SUBORDINATOR|\~SUBELIPSUBJECT)/){
+						$words[$j] = $words[$j]  . "~CONCESUB";
+					}
+					if ($words[$j] =~ /^(when|wen|whn|before|b4|bfor|bfore|befor|bfr|bfre|after|afta|aftr|until|untl|once|1nce|while)_/i && $words[$j] =~ /\~SUB/){
+						$words[$j] = $words[$j]  . "~TIMESUB";
+					}
+					if ($words[$j] =~ /^(whre|where|wher|wherever|whevr|whrever|whreva|wereva|werever|whereva)_/i && $words[$j] =~ /(\~SUBORDINATOR|\~SUBELIPSUBJECT)/){
+						$words[$j] = $words[$j]  . "~PLACESUB";
+					}
+					if ($words[$j] =~ /(\~SUBORDINATOR|\~SUBELIPSUBJECT)/ && $words[$j] !~ /(\~CONDISUB|\~CAUSESUB|\~CONCESUB|\~TIMESUB|\~TIMESUB|\~PLACESUB|\MULTIWVB|\~RELCLAUSE|\~PIEDPIPREL|\~PROGRESSIVE)/){
+						$words[$j] = $words[$j]  . "~OTHRSUB";
+					}
+
+##### specify types of determiners
+
+					
+						if ($words[$j] =~ /^$POSSDET\_[^L]/i && $words[$j+1] =~ /_(N|\^|\$|\#|\O)/){
+							$words[$j] = $words[$j]  . "~POSSDET";
+						} else {
+							if ($words[$j] =~ /^$POSSDET\_[^L]/i && $words[$j+1] =~ /_(N|\^|\$|\#|\O|A)/ && $words[$j+2] =~ /_(N|\^|\$|\#|\O)/){
+								$words[$j] = $words[$j]  . "~POSSDET";
+							} else {
+								if ($words[$j] =~ /^$POSSDET\_[^L]/i && $words[$j+1] =~ /_(N|\^|\$|\#|\O|A|R)/ && $words[$j+2] =~ /_(N|\^|\$|\#|\O|A)/ && $words[$j+3] =~ /_(N|\^|\$|\#|\O)/){
+									$words[$j] = $words[$j]  . "~POSSDET";
+								}
+							}
+						}
+					
+					if ($words[$j] =~ /^$POSSPRO\_O/i){
+						$words[$j] = $words[$j]  . "~POSSPRO";
+					}
+
+					if ($words[$j-1] !~ /^$INDEFART\_/ && $words[$j] =~ /^$INDEFART\_/i && $words[$j] !~ /\~ACRONYM/){
+						$words[$j] = $words[$j]  . "~INDEFART";
+					}
+					if ($words[$j] =~ /^$DEFART\_/i){
+						$words[$j] = $words[$j]  . "~DEFART";
+					} 
+					if ($words[$j-1] =~ /_P/ && $words[$j] =~ /^$QUAN\_/i && $words[$j+1] =~ /_(N|\^|\$|\#|A)/){
+						$words[$j] = $words[$j]  . "~DETQUAN"; 
+					}
+					if ($words[$j-1] =~ /_D/ && $words[$j] =~ /^$QUAN\_/i && $words[$j+1] =~ /_(N|\^|\$|\#|A)/){
+						$words[$j] = $words[$j]  . "~DETQUAN";
+					}
+					if ($words[$j] =~ /^$QUAN\_/i && $words[$j] !~ /\~DETQUAN/ && $words[$j+1] =~ /_(N|\^|\$|\#)/){
+						$words[$j] = $words[$j]  . "~DETQUAN";
+					}
+					if ($words[$j] =~ /^$QUAN\_/i && $words[$j] !~ /\~DETQUAN/ && $words[$j+1] =~ /_A/ && $words[$j+2] =~ /_N/){
+						$words[$j] = $words[$j]  . "~DETQUAN";
+					}
+
+					if ($words[$j] =~ /^$QUAN\_/i && $words[$j+1] =~ /_D/i){
+						$words[$j] = $words[$j]  . "~QUANPREDET";
+					}
+					if ($words[$j] =~ /^$ORD\_/i && $words[$j+1] =~ /_A/){
+						$words[$j] = $words[$j]  . "~ORDDET";
+					}
+					if ($words[$j] =~ /^$ORD\_/i && $words[$j+1] =~ /_(N|\^|\$)/){
+						$words[$j] = $words[$j]  . "~ORDDET";
+					} else {
+						if ($words[$j] =~ /_\$/i && $words[$j] !~ /\~PREP/ && $words[$j+1] =~ /_(N|\$|\^)/i){
+							$words[$j] = $words[$j]  . "~NUMDET";
+						} else {
+							if ($words[$j] =~ /_\$/i && $words[$j] !~ /\~PREP/ && $words[$j+1] =~ /_A/ && $words[$j+2] =~ /(_N|_\$|\^)/){
+								$words[$j] = $words[$j]  . "~NUMDET";
+							} else {
+								if ($words[$j] =~ /_\$/i && $words[$j] !~ /\~PREP/ && $words[$j+1] =~ /_R/ && $words[$j+2] =~ /_A/ && $words[$j+3] =~ /(_N|_\$|\^)/){
+									$words[$j] = $words[$j]  . "~NUMDET";
+								} else {
+									if ($words[$j] =~ /^(million|millions|hundreds|hundred|thousands|thousand|tens|ten|billion|billions|trillion|trillions)_/i && $words[$j+1] =~ /_N/i){
+										$words[$j] = $words[$j]  . "~NUMDET";
+									}	
+								}	
+							}
+						}	
+					}
+					if ($words[$j] =~ /^$DEM\_/i && $words[$j] !~ /\~SUBORDINATOR/ &&  $words[$j+1] =~ /\w+_(N|\$|\^)/i){
+						$words[$j] = $words[$j]  . "~DEMDET";
+					} 
+					if ($words[$j] =~ /^$DEM\_/i && $words[$j] !~ /\~SUBORDINATOR/ && $words[$j+1] =~ /\w+_A/i && $words[$j+2] =~ /\w+_(N|\$|\^)/i){
+						$words[$j] = $words[$j]  . "~DEMDET";
+					} 
+					if ($words[$j] =~ /^$DEM\_/i && $words[$j] !~ /\~SUBORDINATOR/ && $words[$j+1] =~ /_(R|A)/i && $words[$j+2] =~ /_A/ && $words[$j+3] =~ /\w+_(\$|N|\^)/){
+						$words[$j] = $words[$j]  . "~DEMDET";
+					} 
+					if ($words[$j] =~ /^$DEM\_/i && $words[$j] !~ /\~SUBORDINATOR/ && $words[$j+1] =~ /_(R|A)/i && $words[$j+2] =~ /\w+_A/ && $words[$j+3] =~ /\w+_A/ && $words[$j+4] =~ /_(N|\$|\^)/){
+						$words[$j] = $words[$j]  . "~DEMDET";
+					}	
+					if ($words[$j] =~ /^$DEM\_/i && $words[$j] !~ /\~SUBORDINATOR/ && $words[$j+1] =~ /_A/i && $words[$j+2] =~ /_&/ && $words[$j+3] =~ /_A/ && $words[$j+4] =~ /_(N|\$|\^)/){
+						$words[$j] = $words[$j]  . "~DEMDET";
+					}	
+					if ($words[$j-1] =~ /_P/ && $words[$j] =~ /^(that|dat|tht)_/i && $words[$j+1] =~ /_N/){
+						$words[$j] = $words[$j]  . "~DEMDET";
+					}
+					if ($words[$j-1] =~ /_P/ && $words[$j] =~ /^(that|dat|tht)_/i && $words[$j+1] =~ /_A/ && $words[$j+2] =~ /_N/){
+						$words[$j] = $words[$j]  . "~DEMDET";
+					}
+					if ($words[$j-1] =~ /_P/ && $words[$j] =~ /^(that|dat|tht)_/i && $words[$j+1] =~ /_R/ && $words[$j+2] =~ /_A/ && $words[$j+3] =~ /N/){
+						$words[$j] = $words[$j]  . "~DEMDET";
+					}
+
+					if ($words[$j-1] =~ /[\:\.\,\-\?\!]_(,|Q)/ && $words[$j] =~ /^(that|dat|tht)_/i && $words[$j+1] =~ /_R/ && $words[$j+2] =~ /_A/ && $words[$j+3] =~ /N/){
+						$words[$j] = $words[$j]  . "~DEMDET";
+					}
+					if ($words[$j-1] =~ /[\:\.\,\-\?\!]_(,|Q)/ && $words[$j] =~ /^(that|dat|tht)_/i && $words[$j+1] =~ /_N/){
+						$words[$j] = $words[$j]  . "~DEMDET";
+					}
+					if ($words[$j-1] =~ /[\:\.\,\-\!\?]_(,|Q)/ && $words[$j] =~ /^(that|dat|tht)_/i && $words[$j+1] =~ /_A/ && $words[$j+2] =~ /_N/){
+						$words[$j] = $words[$j]  . "~DEMDET";
+					}
+					if ($words[$j-1] =~ /[\:\.\,\-\!\?]_(,|Q)/ && $words[$j] =~ /^(that|dat|tht)_/i && $words[$j+1] =~ /_R/ && $words[$j+2] =~ /_A/ && $words[$j+3] =~ /N/){
+						$words[$j] = $words[$j]  . "~DEMDET";
+					}
+					if ($words[$j-2] !~ /_P/ && $words[$j-1] =~ /_\@/ && $words[$j] =~ /^(that|dat|tht)_/i && $words[$j+1] =~ /_R/ && $words[$j+2] =~ /_A/ && $words[$j+3] =~ /N/){
+						$words[$j] = $words[$j]  . "~DEMDET";
+					}
+					if ($words[$j-2] !~ /_P/ && $words[$j-1] =~ /_\@/ && $words[$j] =~ /^(that|dat|tht)_/i && $words[$j+1] =~ /_N/){
+						$words[$j] = $words[$j]  . "~DEMDET";
+					}
+					if ($words[$j-2] !~ /_P/ && $words[$j-1] =~ /_\@/ && $words[$j] =~ /^(that|dat|tht)_/i && $words[$j+1] =~ /_A/ && $words[$j+2] =~ /_N/){
+						$words[$j] = $words[$j]  . "~DEMDET";
+					}
+					if ($words[$j-2] !~ /_P/ && $words[$j-1] =~ /_\@/ && $words[$j] =~ /^(that|dat|tht)_/i && $words[$j+1] =~ /_R/ && $words[$j+2] =~ /_A/ && $words[$j+3] =~ /N/){
+						$words[$j] = $words[$j]  . "~DEMDET";
+					}
+					if ($words[$j] =~ /^(that|dat|tht)_/i && $words[$j+1] =~ /_A/ && $words[$j+2] =~ /_N/ && $words[$j+3] =~ /[\!\?\.\:]_(Q|,|G)/){
+						$words[$j] = $words[$j]  . "~DEMDET";
+					}
+					if ($words[$j] =~ /^(that|dat|tht)_/i && $words[$j+1] =~ /_N/ && $words[$j+3] =~ /[\!\?\.\:\-]_(Q|,|G)/){
+						$words[$j] = $words[$j]  . "~DEMDET";
+					}
+					if ($words[$j] =~ /^(that|dat|tht)_/i && $words[$j+1] =~ /_A/ && $words[$j+2] =~ /_A/ && $words[$j+3] =~ /_N/ && $words[$j+4] =~ /[\!\?\.\:]_(Q|,|G)/){
+						$words[$j] = $words[$j]  . "~DEMDET";
+					}
+
+##### specify types of pronouns
+
+					if ($words[$j-1] =~ /_P/i && $words[$j] =~ /^$QUAN\_/i && $words[$j+1] =~ /_,/){
+						$words[$j] = $words[$j]  . "~PROQUAN";
+					}
+					if ($words[$j-1] !~ /_D/ && $words[$j] =~ /^$QUAN\_/i && $words[$j+1] =~ /^(of|ov)_/i){
+						$words[$j] = $words[$j]  . "~PROQUAN";
+					} else {
+						if ($words[$j] =~ /^$QUAN\_/i && $words[$j+1] =~ /_P/i){
+							$words[$j] = $words[$j]  . "~PROQUAN";
+						}
+					}
+					if ($words[$j] =~ /^$QUAN\_/i && $words[$j+1] =~ /^(there_X|dere_X|ther_X|\w+_O|\w+_L)/i){
+						$words[$j] = $words[$j]  . "~PROQUAN";
+					}
+					if ($words[$j-1] !~ /(_O|_N|_\^|_R)/ && $words[$j] =~ /^$QUAN\_/i && $words[$j+1] =~ /(_V|_\&)/){
+						$words[$j] = $words[$j]  . "~PROQUAN";
+					}	
+					if ($words[$j] =~ /^$BODONETH\_/i){
+						$words[$j] = $words[$j]  . "~PROQUAN";
+					}
+					if ($words[$j] =~ /^$BODONETHS\_/i && $words[$j+1] =~ /_N/){
+						$words[$j] = $words[$j]  . "~PROQUANPOSES";
+					} else {
+						if ($words[$j] =~ /^$BODONETHS\_/i && $words[$j+1] =~ /_A/ && $words[$j+2] =~ /_N/){
+							$words[$j] = $words[$j]  . "~PROQUANPOSES";
+						} else {
+							if ($words[$j] =~ /^$BODONETHS\_/i && $words[$j+1] !~ /_N/){
+								$words[$j] = $words[$j]  . "~PROQUANCONTRACT";
+							}	
+						}
+					}
+						
+					if ($words[$j] =~ /^$SUBJPRO\_/i && $words[$j] !~ /\~ACRONYM/){
+						$words[$j] = $words[$j]  . "~SUBJPRO";
+					}
+					if ($words[$j] =~ /^$OBJPRO\_/i && $words[$j] !~ /(\~ACRONYM|\~PRPN)/){
+						$words[$j] = $words[$j]  . "~OBJPRO";
+					}
+					if ($words[$j] =~ /^$OTHERPRO\_(O|L)/i && $words[$j] !~ /\~ACRONYM/){
+						$words[$j] = $words[$j]  . "~OTHRPRO";
+					}
+					if ($words[$j] =~ /^$IT\_/i){
+						$words[$j] = $words[$j]  . "~IT";
+					}
+					if ($words[$j] =~ /^$FSTPP\_/i && $words[$j] !~ /(\~ACRONYM|\~PRPN)/){
+						$words[$j] = $words[$j]  . "~FSTPP";
+					}
+					if ($words[$j] =~ /^lets_L/i){
+						$words[$j] = $words[$j]  . "~FSTPP";
+					}
+					if ($words[$j] =~ /^(ours|mine)_/i){
+						$words[$j] = $words[$j]  . "~FSTPP";
+					}
+					if ($words[$j] =~ /^$SNDPP\_/i && $words[$j] !~ /\~ACRONYM/){
+						$words[$j] = $words[$j]  . "~SNDPP";
+					}
+					if ($words[$j] =~ /^yours_/i ){
+						$words[$j] = $words[$j]  . "~SNDPP";
+					}
+					if ($words[$j] =~ /^$THRDPP\_/i){
+						$words[$j] = $words[$j]  . "~THRDPP";
+					}
+					if ($words[$j] =~ /^theirs_/i){
+						$words[$j] = $words[$j]  . "~THRDPP";
+					}
+					if ($words[$j] =~ /^(em|'em)_O/i){
+						$words[$j] = $words[$j]  . "~THRDPP";
+					}
+					if ($words[$j] =~ /^$REFLEXPRO\_/i){
+						$words[$j] = $words[$j]  . "~REFLEXPRO";
+					}
+					
+
+
+
+###### specify types of adverbs
+
+					if ($words[$j-2] =~ /^$OBJPRO\_/i && $words[$j-1] =~ /^so+_R/ && $words[$j] =~ /^(much|mch)_/){
+						$words[$j] = $words[$j]  . "~ADVQUAN";
+					}
+
+					if ($words[$j-1] =~ /^($BE|$COPULAR2)\_/i && $words[$j] =~ /^$QUAN\_/i && $words[$j+1] =~ /_A/i && $words[$j+2] !~ /_N/){
+						$words[$j] = $words[$j]  . "~ADVQUAN";
+					}
+					if ($words[$j-1] =~ /(_O|_N|[(^\.)]_\^)/ && $words[$j] =~ /^$QUAN\_/i && $words[$j+1] =~ /_V/i){
+						$words[$j] = $words[$j]  . "~ADVQUAN"; #QFLOATADV
+					} else {
+						if ($words[$j-1] =~ /(_O|_N|[^\.]_\^)/ && $words[$j] =~ /^$QUAN\_/i && $words[$j] !~ /(\~DETQUAN|\~PROQUAN|\~QUANPREDET)/ && $words[$j+1] !~ /^(year|yr|month|day|dai|time|morning|mornin|night|nght|second|minute|hour)_/i && $words[$j+1] !~ /_(P|\,|D)/){
+							$words[$j] = $words[$j]  . "~ADVQUAN"; #QFLOATADV
+						}
+					}
+					if ($words[$j] =~ /^$SPATPRO\_/i && $words[$j] !~ /~EXIST/){
+						$words[$j] = $words[$j]  . "~PLACEADV";
+					}
+					
+					if ($words[$j] =~ /^$AMPLIFIER\_R/i){
+						$words[$j] = $words[$j]  . "~AMPLIFIER";
+					} 
+					if ($words[$j] =~ /^(so|so+)_R/i && $words[$j] !~ /(\~SUBORDINATOR|\~PRO)/){
+						$words[$j] = $words[$j]  . "~AMPLIFIER";
+					} 
+					if ($words[$j] =~ /^(much|mch)_/i && $words[$j+1] =~ /^(lower|colder|cooler|darker|faster|duller|drier|finer|harder|later|longer|newer|richer|softer|easier|braver|calmer|busier|fatter|taller|bigger|sadder|worse|less|older|higher|fewer|better|\w{5,}er)_A/i){
+						$words[$j] = $words[$j]  . "~AMPLIFIER";
+					}
+					if ($words[$j-1] =~ /^by_P/i && $words[$j] =~ /^far_/i){
+						$words[$j-1] = $words[$j-1] . "~AMPLIFIER";
+						$words[$j] = $words[$j] . "~AMPLIFIER";
+					} 
+					if ($words[$j-1] =~ /^a_P/i && $words[$j] =~ /^lot_/i){
+						$words[$j] = $words[$j] . "~AMPLIFIER";
+					} 
+					if ($words[$j] =~ /^way_/i && $words[$j+1] =~ /^(too_|off_|_A)/i){
+						$words[$j] = $words[$j] . "~AMPLIFIER";
+					}
+					if ($words[$j] =~ /^$DOWNTNR\_R/i && $words[$j] !~ /\~CNTRSTCONJ/){
+						$words[$j] = $words[$j]  . "~DOWNTONER";
+					} 
+					if ($words[$j-1] =~ /a_D/i && $words[$j] =~ /(bit|little|lil)_/i){
+						$words[$j] = $words[$j]  . "~DOWNTONER";
+					} 
+					if ($words[$j-1] =~ /a_D/i && $words[$j] =~ /(little|lil|tiny|tny)_/i && $words[$j+1] =~ /bit_/i){
+						$words[$j] = $words[$j]  . "~DOWNTONER";
+					} 
+					if ($words[$j-1] =~ /only_/i && $words[$j] =~ /(just|jst)_/i){
+						$words[$j] = $words[$j]  . "~DOWNTONER";
+					}
+					if ($words[$j-1] =~ /(sort|kind|srt|knd)_/i && $words[$j] =~ /(of|ov)_/i){
+						$words[$j] = $words[$j]  . "~DOWNTONER";
+					} 
+					if ($words[$j-1] =~ /(just|jst)_/i && $words[$j] =~ /(about|abt|abowt)_/i){
+						$words[$j] = $words[$j]  . "~DOWNTONER";
+					} 
+					if ($words[$j-2] =~ /(more|mre|mor)_/i && $words[$j-1] =~ /or_/i && $words[$j] =~ /(less|lss|les)_/i){
+						$words[$j] = $words[$j]  . "~DOWNTONER";
+					}
+					if ($words[$j] =~ /^$PLACADV\_R/i && $words[$j] !~ /(\~SUBORDINATOR|\~AMPLIFIER)/){
+						$words[$j] = $words[$j]  . "~PLACEADV";
+					} 
+					if ($words[$j] =~ /^$TIMEADV\_R/i && $words[$j] !~ /\~SUBORDINATOR/){
+						$words[$j] = $words[$j]  . "~TIMEADV";
+					} else {
+						if ($words[$j] =~ /^$TIMEADV\_/i && $words[$j] =~ /\~ADV/){
+							$words[$j] = $words[$j]  . "~TIMEADV";
+						}	
+					}
+					if ($words[$j-1] =~ /(last|next|lst|nxt|this)_/i && $words[$j] =~ /(morning|mornin|afternoon|evening|night|nite|year|yr|month|mnth|week|January|Jan|February|Feb|March|April|May|June|July|August|Aug|Sepetember|Sep|October|Oct|November|Nov|December|Dec|Monday|Mon|Tuesday|Tues|Wednesday|Wed|Thursday|Thurs|Friday|Fri|Saturday|Sat|Sunday|Sun)_/i){
+						$words[$j] = $words[$j]  . "~TIMEADV";
+					}
+					if ($words[$j] =~ /^$USUALITY\_/i){
+						$words[$j] = $words[$j]  . "~USUALITY";
+					}
+					if ($words[$j] =~ /^\w+ly_A~ADV/i && $words[$j] !~ /(\~NEG|\~WH|\~WHCONTRACT|\~MULTIADV|\~PLACEADV|\~TIMEADV|\~USUALITY|\~DOWNTONER|\~AMPLIFIER|\~OTHERADV|\~SUBORDINATOR|\~CNTRSTCONJ|\~MULTIWVB|\~ADVQUAN|\~COMPARATIVE|\~SUPERLATIVE)/){
+						$words[$j] = $words[$j]  . "~OTHERADV";
+					}
+					if ($words[$j] =~ /_R/ && $words[$j] !~ /(\~NEG|\~WH|\~WHCONTRACT|\~MULTIADV|\~PLACEADV|\~TIMEADV|\~USUALITY|\~DOWNTONER|\~AMPLIFIER|\~OTHERADV|\~SUBORDINATOR|\~CNTRSTCONJ|\~MULTIWVB|\~ADVQUAN|\~PRO|\~EXIST|\~COMPARATIVE|\~SUPERLATIVE|\~INTJ)/){
+						$words[$j] = $words[$j]  . "~OTHERADV";
+					}
+
+##### specify types of nouns
+
+					if ($words[$j] =~ /^$ORD\_/i && $words[$j] !~ /~DET/ && $words[$j] !~ /forth_R/i && $words[$j+1] !~ /_(N|\$|\^)/){
+						$words[$j] = $words[$j]  . "~ORDNOUN";
+					} else {
+						if ($words[$j] =~ /_\$/i && $words[$j] !~ /~DET/ && $words[$j+1] !~ /_(\$|N|\^|A)/i){
+							$words[$j] = $words[$j]  . "~NUMNOUN";
+						} else {
+							if ($words[$j] =~ /^(million|millions|hundreds|hundred|thousands|thousand|tens|ten|billion|billions|trillion|trillions)_/i && $words[$j] !~ /~DET/ && $words[$j+1] !~ /_(N|\^|\$)/i){
+								$words[$j] = $words[$j]  . "~NUMNOUN";
+							}
+						}	
+					}
+					if ($words[$j] =~ /(\w+s|\w+'s)_S/){
+						$words[$j] = $words[$j]  . "~POSESNOUN";
+					} 
+					if ($words[$j] =~ /\w+'s_N/){
+						$words[$j] = $words[$j]  . "~POSESNOUN";
+					}
+					if ($words[$j] =~ /\~NOUN/ && $words[$j] !~ /(\~POSESNOUN|\~NUMNOUN|\~ORDNOUN)/){
+						$words[$j] = $words[$j]  . "~OTHRNOUN";
+					}
+##### specify types of proper nouns
+
+					if ($words[$j] =~ /_Z/ && $words[$j] !~ /\~PRO/){
+						$words[$j] = $words[$j]  . "~POSESPRPN";
+					}
+					if ($words[$j] =~ /\w+'s_\^/i && $words[$j] !~ /(\~NOUN|\~NUMNOUN|\~NUMDET|\~QUOT|\~PRO|\~CONTRACTWH|\~EXIST)/){
+						$words[$j] = $words[$j]  . "~POSESPRPN";
+					}	
+
+##### specify the type of adjective
+
+					if ($words[$j] =~ /($ADJ|\~ADJ)/i && $words[$j] !~ /(\~NOUN|\~DET|\~PRO|\~VERB|\~ADV|\~INTJ)/ && $words[$j+1] =~ /\w+_(N|\^|A)/i){
+						$words[$j] = $words[$j]  . "~ATTRIBADJ";
+					} else {
+						if ($words[$j-6] =~ /(^$BE\_|^$COPULAR2\_|\~PROCONTRACTCOPVB|^its_L)/i && $words[$j-5] =~ /$ADV/i && $words[$j-4] =~ /$ADV/i && $words[$j-3] =~ /$ADJ/i && $words[$j-2] =~ /_\&/i && $words[$j-1] =~ /$ADV/i && $words[$j] =~ /($ADJ|\~ADJ)/i && $words[$j] !~ /(\~NOUN|\~DET|\~PRO|\~VERB|\~ADV|\~PREDET)/ && $words[$j+1] !~ /\w+_(A|R|N|\^)/i){
+							$words[$j] = $words[$j]  . "~PREDADJ";
+						} else {
+							if ($words[$j-5] =~ /(^$BE\_|\~PROCONTRACTCOPVB|^its_L)/i && $words[$j-4] =~ /$ADV/i && $words[$j-3] =~ /$ADV/i && $words[$j-2] =~ /$ADJ/i && $words[$j-1] =~ /_\&/i && $words[$j] =~ /($ADJ|\~ADJ)/i && $words[$j] !~ /(\~NOUN|\~DET|\~PRO|\~VERB|\~ADV|\~PREDET)/ && $words[$j+1] !~ /\w+_(A|R|N|\^)/i){
+								$words[$j] = $words[$j]  . "~PREDADJ";
+							} else {
+								if ($words[$j-5] =~ /^$COPULAR2\_/i &&	$words[$j-4] =~ /$ADV/i && $words[$j-3] =~ /$ADV/i && $words[$j-2] =~ /$ADJ/i && $words[$j-1] =~ /_\&/i && $words[$j] =~ /($ADJ|\~ADJ)/i && $words[$j] !~ /(\~NOUN|\~DET|\~PRO|\~VERB|\~ADV|\~PREDET)/ && $words[$j+1] !~ /\w+_(A|R|N|\^)/i){
+									$words[$j] = $words[$j]  . "~PREDADJ";
+								} else {
+									if ($words[$j-4] =~ /(^$BE\_|\~PROCONTRACTCOPVB|^its_L)/i && $words[$j-3] =~ /$ADV/i && $words[$j-2] =~ /$ADJ/i && $words[$j-1] =~ /_\&/i && $words[$j] =~ /($ADJ|\~ADJ)/i && $words[$j] !~ /(\~NOUN|\~DET|\~PRO|\~VERB|\~ADV|\~PREDET)/ && $words[$j+1] !~ /\w+_(A|R|N|\^)/i){
+										$words[$j] = $words[$j]  . "~PREDADJ";
+									} else {
+										if ($words[$j-4] =~ /^$COPULAR2\_/i && $words[$j-3] =~ /$ADV/i && $words[$j-2] =~ /$ADJ/i && $words[$j-1] =~ /_\&/i && $words[$j] =~ /($ADJ|\~ADJ)/i && $words[$j] !~ /(\~NOUN|\~DET|\~PRO|\~VERB|\~ADV|\~PREDET)/ && $words[$j+1] !~ /\w+_(A|R|N|\^)/i){
+											$words[$j] = $words[$j]  . "~PREDADJ";
+										} else {
+											if ($words[$j-3] =~ /^$COPULAR2\_/i &&	$words[$j-2] =~ /$ADJ/i && $words[$j-1] =~ /_\&/i && $words[$j] =~ /($ADJ|\~ADJ)/i && $words[$j] !~ /(\~NOUN|\~DET|\~PRO|\~VERB|\~ADV|\~PREDET)/){
+												$words[$j] = $words[$j]  . "~PREDADJ";
+											} else {
+												if ($words[$j-3] =~ /(^$BE\_|\~PROCONTRACTCOPVB|^its_L)/i &&	$words[$j-2] =~ /$ADJ/i && $words[$j-1] =~ /_\&/i && $words[$j] =~ /($ADJ|\~ADJ)/i && $words[$j] !~ /(\~NOUN|\~DET|\~PRO|\~VERB|\~ADV|\~PREDET)/){
+													$words[$j] = $words[$j]  . "~PREDADJ";
+												} else {
+													if ($words[$j-3] =~ /(^$BE\_|\~PROCONTRACTCOPVB|^its_L)/i &&	$words[$j-2] =~ /$ADV/i && $words[$j-1] =~ /$ADV/i && $words[$j] =~ /($ADJ|\~ADJ)/i && $words[$j] !~ /(\~NOUN|\~DET|\~PRO|\~VERB|\~ADV|\~PREDET)/ && $words[$j+1] !~ /\w+_(A|R|N|\^)/i){
+														$words[$j] = $words[$j]  . "~PREDADJ";
+													} else {
+														if ($words[$j-3] =~ /^$COPULAR2\_/i &&	$words[$j-2] =~ /$ADV/i && $words[$j-1] =~ /$ADV/i && $words[$j] =~ /($ADJ|\~ADJ)/i && $words[$j] !~ /(\~NOUN|\~DET|\~PRO|\~VERB|\~ADV|\~PREDET)/ && $words[$j+1] !~ /\w+_(A|R|N|\^)/i){
+															$words[$j] = $words[$j]  . "~PREDADJ";
+														} else {
+															if ($words[$j-2] =~ /^$COPULAR2\_/i &&	$words[$j-1] =~ /$ADV/i && $words[$j] =~ /($ADJ|\~ADJ)/i && $words[$j] !~ /(\~NOUN|\~DET|\~PRO|\~VERB|\~ADV|\~PREDET)/ && $words[$j+1] !~ /\w+_(A|R|N|\^)/i){
+																$words[$j] = $words[$j]  . "~PREDADJ";
+															} else {
+																if ($words[$j-1] =~ /(^$BE\_|\~PROCONTRACTCOPVB|^its_L)/i && $words[$j] =~ /($ADJ|\~ADJ)/i && $words[$j] !~ /(\~NOUN|\~DET|\~PRO|\~VERB|\~ADV|\~PREDET)/ && $words[$j+1] !~ /\w+_(A|R|N|\^)/i){
+																	$words[$j] = $words[$j]  . "~PREDADJ";
+																} else {
+																	if ($words[$j-2] =~ /(^$BE\_|\~PROCONTRACTCOPVB|^its_L)/i &&	$words[$j-1] =~ /$ADV/i && $words[$j] =~ /($ADJ|\~ADJ)/i && $words[$j] !~ /(\~NOUN|\~DET|\~PRO|\~VERB|\~ADV)/ && $words[$j+1] !~ /\w+_(A|R|N|\^)/i){
+																		$words[$j] = $words[$j]  . "~PREDADJ";
+																	} else {
+																		if ($words[$j-1] =~ /^$COPULAR2\_/i && $words[$j] =~ /($ADJ|\~ADJ)/i && $words[$j] !~ /(\~NOUN|\~DET|\~PRO|\~VERB|\~ADV|\~PREDET)/ && $words[$j+1] !~ /\w+_(A|R|N|\^)/i){
+																			$words[$j] = $words[$j]  . "~PREDADJ";
+																		
+																		}
+																	}
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}	
+
+			
+
+##### specify types of verbs
+
+
+					if ($words[$j] =~ /^$PUBV\_V/i && $words[$j] !~ /(\~NOUN|\~ADJ|\~ADVERB)/){
+						$words[$j] = $words[$j]  . "~PUBV";
+					} 
+					if ($words[$j] =~ /^$PRVV\_V/i && $words[$j] !~ /(\~NOUN|\~ADJ|\~ADVERB)/){
+						$words[$j] = $words[$j]  . "~PRVV";
+					}
+					if ($words[$j] =~ /^$SUAV\_V/i && $words[$j] !~ /(\~NOUN|\~ADJ|\~ADVERB)/){
+						$words[$j] = $words[$j]  . "~SUAV";
+					}
+					if ($words[$j] =~ /^$PERCEPTVRBS\_V/i && $words[$j] !~ /(\~NOUN|\~ADJ|\~ADVERB)/){
+						$words[$j] = $words[$j]  . "~PERCEPTVB";
+					}
+					if ($words[$j] =~ /^$STANCEVRBS\_V/i && $words[$j] !~ /(\~NOUN|\~ADJ|\~ADVERB)/){
+						$words[$j] = $words[$j]  . "~STANCEVB";
+					}
+					if ($words[$j] =~ /^($COPULAR2|$BE)\_V/i && $words[$j+1] =~ /_A/ && $words[$j+2] !~ /(_N|_\$|_\^|_Z)/){
+						$words[$j] = $words[$j]  . "~COPVB";
+					} else {
+						if ($words[$j] =~ /^($COPULAR2|$BE)\_V/i && $words[$j+1] =~ /_R/ && $words[$j+2] =~ /_A/ && $words[$j+3] !~ /(_N|_\$|_\^|_Z)/){
+							$words[$j] = $words[$j]  . "~COPVB";
+						} else {
+							if ($words[$j] =~ /^($COPULAR2|$BE)\_V/i && $words[$j+1] =~ /_R/ && $words[$j+2] =~ /_R/ && $words[$j+3] =~ /_A/ && $words[$j+4] !~ /(_N|_\$|_\^|_Z)/){
+								$words[$j] = $words[$j]  . "~COPVB";
+							}
+						}	
+					}
+					if ($words[$j] =~ /^(turn|turns|turned|turning|end|ends|ending|ended|wind|wound|winds|winding)_V/i && $words[$j+1] =~ /^up_/i && $words[$j+2] =~ /_A/ && $words[$j+3] !~ /(_N|_\$|_\^|_Z)/){
+						$words[$j] = $words[$j]  . "~COPVB";
+					} else {
+						if ($words[$j] =~ /^(turn|turns|turned|turning|end|ends|ending|ended|wind|wound|winds|winding)_V/i && $words[$j+1] =~  /^up_/i && $words[$j+2] =~ /_R/ && $words[$j+3] =~ /_A/ && $words[$j+4] !~ /(_N|_\$|_\^|_Z)/){
+							$words[$j] = $words[$j]  . "~COPVB";
+						} 
+					}
+
+					if ($words[$j-1] =~ /^($COPULAR2|$BE)\_V/i && $words[$j] =~ /_A/ && $words[$j] !~ /\~PREDADJ/ && $words[$j+1] !~ /(_N|_\$|_\^|_Z)/){
+						$words[$j] = $words[$j]  . "~PREDADJ";
+					} else {
+						if ($words[$j-2] =~ /^($COPULAR2|$BE)\_V/i && $words[$j-1] =~ /_R/ && $words[$j] =~ /_A/ && $words[$j] !~ /\~PREDADJ/ && $words[$j+1] !~ /(_N|_\$|_\^|_Z)/){
+							$words[$j] = $words[$j]  . "~PREDADJ";
+						} else {
+							if ($words[$j-3] =~ /^($COPULAR2|$BE)\_V/i && $words[$j-2] =~ /_R/ && $words[$j-1] =~ /_R/ && $words[$j] =~ /_A/ && $words[$j] !~ /\~PREDADJ/ && $words[$j+1] !~ /(_N|_\$|_\^|_Z)/){
+								$words[$j] = $words[$j]  . "~PREDADJ";
+							}
+						}	
+					}
+					if ($words[$j-2] =~ /^(turn|turns|turned|turning|end|ends|ending|ended|wind|wound|winds|winding)_V/i && $words[$j-1] =~ /^up_/i && $words[$j] =~ /_A/ && $words[$j] !~ /\~PREDADJ/ && $words[$j+1] !~ /(_N|_\$|_\^|_Z)/){
+						$words[$j] = $words[$j]  . "~PREDADJ";
+					} else {
+						if ($words[$j-3] =~ /^(turn|turns|turned|turning|end|ends|ending|ended|wind|wound|winds|winding)_V/i && $words[$j-2] =~  /^up_/i && $words[$j-1] =~ /_R/ && $words[$j] =~ /_A/ && $words[$j] !~ /\~PREDADJ/ && $words[$j+1] !~ /(_N|_\$|_\^|_Z)/){
+							$words[$j] = $words[$j]  . "~PREDADJ";
+						} 
+					}
+					if ($words[$j] =~ /(\w+_A|\~ADJ)/i && $words[$j] !~ /_(\~NOUN|\~DET|\~PRO|\~VERB|\~ADV|\~PREDADJ|\~ATTRIBADJ|\~PREDET|\~INTJ|\~DOWNTONER|\~PREP)/){
+						$words[$j] = $words[$j]  . "~ATTRIBADJ";
+					}
+					if ($j == 0 && $words[$j] =~ /^$HAVE2\_/i){
+						$words[$j] = $words[$j]  . "~HAVEIVB";
+					} else {
+						if ($words[$j-1] =~ /[\-\:\!\.\?]_,/ && $words[$j] =~ /^$HAVE2\_/i){
+							$words[$j] = $words[$j]  . "~HAVEIVB";
+						} else {
+							if ($words[$j-1] =~ /^($WHP|$WHO)\_/i && $words[$j-1] !~ /_\~RELCLAUSE/ && $words[$j] =~ /^$HAVE2\_/i){
+								$words[$j] = $words[$j]  . "~QHAVE";
+							} else {	
+								if ($words[$j] =~ /^$HAVE\_/i && $words[$j+1] =~ /_\$/){
+									$words[$j] = $words[$j]  . "~HAVEMV";
+								} else {
+									if ($words[$j] =~ /^$HAVE\_/i && $words[$j+1] =~ /^\w+_D/i){
+										$words[$j] = $words[$j]  . "~HAVEMV";
+									} else {
+										if ($words[$j] =~ /^$HAVE\_/i && $words[$j+1] =~ /^\w+_N/i){
+											$words[$j] = $words[$j]  . "~HAVEMV";
+										} else {
+											if ($words[$j] =~ /^$HAVE\_/i && $words[$j+1] =~ /^\w+_(O|X)/i && $words[$j+2] !~ /^\w+_V/ && $words[$j+3] !~ /^\w+_V/){
+												$words[$j] = $words[$j]  . "~HAVEMV";
+											} else {
+												if ($words[$j] =~ /^$HAVE\_/i && $words[$j+1] =~ /\w+_\^/i && $words[$j+2] !~ /^\w+_V/ && $words[$j+3] !~ /^\w+_V/){
+													$words[$j] = $words[$j]  . "~HAVEMV";
+												} else {
+													if ($words[$j] =~ /^$HAVE\_/i && $words[$j+1] =~ /$ADJ/i){
+														$words[$j] = $words[$j]  . "~HAVEMV";
+													} else {
+														if ($words[$j] =~ /^$HAVE\_/i && $words[$j+1] =~ /$PREP/i && $words[$j+1] !~ /^(to|2)_/){
+															$words[$j] = $words[$j]  . "~HAVEMV";
+														} else {
+															if ($words[$j] =~ /^$HAVE\_/i && $words[$j+1] =~ /$ADV/i && $words[$j+2] =~ /$ADJ/i){
+																$words[$j] = $words[$j]  . "~HAVEMV";
+															} else {
+																if ($words[$j] =~ /^$HAVE\_/i && $words[$j+1] =~ /[\!\.\?]_,/){
+																	$words[$j] = $words[$j]  . "~HAVEMV";
+																} else {
+																	if ($words[$j] =~ /^$HAVE\_/i && $words[$j+1] =~ /$ADV/i && $words[$j+2] =~ /_\$/i){
+																		$words[$j] = $words[$j]  . "~HAVEMV";
+																	} else {
+																		if ($words[$j] =~ /^$HAVE\_/i && $words[$j+1] =~ /$ADV/i && $words[$j+2] =~ /\w+_N/i){
+																			$words[$j] = $words[$j]  . "~HAVEMV";
+																		} else {
+																			if ($words[$j] =~ /^$HAVE\_/i && $words[$j] !~ /~HAVEMV/){
+																				$words[$j] = $words[$j]  . "~AUXHAVE";
+																			}
+																		}
+																	}
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									}
+								}
+							}
+						}	
+					}						
+					if ($words[$j-1] =~ /^$WHP\_/i && $words[$j-1] !~ /_\~RELCLAUSE/ && $words[$j] =~ /^$DO\_/i){
+						$words[$j] = $words[$j]  . "~QDO";
+					} else {
+						if ($words[$j-1] =~ /^$WHO\_/i && $words[$j-1] !~ /_\~RELCLAUSE/ && $words[$j] =~ /^$DO\_/i){
+							$words[$j] = $words[$j]  . "~QDO";
+						} else {
+							if ($words[$j] =~ /^$DO\_/i && $words[$j+1] =~ /($ADV|$BODONETH|_O)/i && $words[$j+2] =~ /\w+_V/i){
+								$words[$j] = $words[$j]  . "~AUXDO";
+							} else {
+								if ($words[$j] =~ /^$DO\_/i && $words[$j+1] =~ /$ADV/ && $words[$j+2] =~ /$ADV/ && $words[$j+3]=~ /\w+_V/i){
+									$words[$j] = $words[$j]  . "~AUXDO";
+								} else {
+									if ($words[$j] =~ /^$DO\_/i && $words[$j+1] =~ /\w+_V/i){
+										$words[$j] = $words[$j]  . "~AUXDO";
+									} else {
+										if ($words[$j-1] =~ /[\-\:\!\.\?]_,/ && $words[$j] =~ /^$DO\_/i){
+											$words[$j] = $words[$j]  . "~DOIVB";
+										} else {
+											if ($j==0 && $words[$j] =~ /^$DO\_/i){
+												$words[$j] = $words[$j]  . "~DOIVB";
+											} else {
+												if ($words[$j] =~ /^$DO\_/i && $words[$j] !~ /(_\~QAUXDO|_\~DOIVB|\~AUXDO)/){
+													$words[$j] = $words[$j]  . "~PROVDO";
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}	
+
+					if ($j == 0 && $words[$j] =~ /^$BE2\_/i){
+						$words[$j] = $words[$j]  . "~BEIVB";
+					} else {
+						if ($words[$j-1] =~ /[\-\:\!\.\?]_,/ && $words[$j] =~ /^$BE2\_/i){
+							$words[$j] = $words[$j]  . "~BEIVB";
+						} else {						
+							if ($words[$j-2] !~ /($DO|$HAVE|_\~IMPERATIVE)/ && $words[$j-1] =~ /^($WHP|$WHO)\_/i && $words[$j-1] !~ /(_\~RELCLAUSE|_\~WHCLAUSE|_\~PIEDPIPREL)/ && $words[$j] =~ /^$BE\_V/i && $words[$j] !~ /\~COPVB/){
+								$words[$j] = $words[$j]  . "~QBE";
+							} else {
+								if ($words[$j] =~ /^$BE\_V/i && $words[$j] !~ /\~AUXBE/ && $words[$j+1] =~ /$ADV/i && $words[$j+2] =~ /$ADV/i && $words[$j+3] =~ /\w+_V/i){
+									$words[$j] = $words[$j]  . "~AUXBE";
+								} else {
+									if ($words[$j] =~ /^$BE\_V/i && $words[$j] !~ /\~AUXBE/ && $words[$j+1] =~ /$ADV/i && $words[$j+2] =~ /\w+_V/i){
+										$words[$j] = $words[$j]  . "~AUXBE";
+									} else {
+										if ($words[$j] =~ /^$BE\_V/i && $words[$j] !~ /\~AUXBE/ && $words[$j] !~ /\~COPVB/ && $words[$j+1] =~ /\w+_V/i){
+											$words[$j] = $words[$j]  . "~AUXBE";
+										} else {
+											if ($words[$j] =~ /^$BE\_V/i && $words[$j+1] =~ /$ADV/i && $words[$j+2] =~ /$ADV/i && $words[$j+3] !~ /\w+_V/i && $words[$j+4] !~ /\w+_V/i && $words[$j+5] !~ /\w+_V/i){
+												$words[$j] = $words[$j]  . "~BEMV";	
+											} else {
+												if ($words[$j] =~ /^$BE\_V/i && $words[$j+1] =~ /[\.\!\?\:]_,/i){
+													$words[$j] = $words[$j]  . "~BEMV";
+												} else {
+													if ($words[$j] =~ /^$BE\_V/i && $words[$j+1] =~ /$ADV/i && $words[$j+2] =~ /[\.\!\?\:]_,/i){
+														$words[$j] = $words[$j]  . "~BEMV";
+													} else {
+														if ($words[$j] =~ /^$BE\_V/i && $words[$j+1] =~ /$ADV/i && $words[$j+2] =~ /$ADV/ && $words[$j+3] =~ /[\?\!\:\.]_,/i){
+															$words[$j] = $words[$j]  . "~BEMV";
+														} else {
+															if ($words[$j] =~ /^$BE\_V/i && $words[$j+1] =~ /$ADV/i && $words[$j+2] =~ /\w+_(D|\$|O)/i){
+																$words[$j] = $words[$j]  . "~BEMV";
+															} else {
+																if ($words[$j] =~ /^$BE\_V/i && $words[$j+1] =~ /$ADV/i && $words[$j+2] =~ /\w+_N/i){
+																	$words[$j] = $words[$j]  . "~BEMV";
+																} else {
+																	if ($words[$j] =~ /^$BE\_V/i && $words[$j+1] =~ /$ADV/i && $words[$j+2] =~ /\w+_\^/i){
+																		$words[$j] = $words[$j]  . "~BEMV";
+																	} else {
+																		if ($words[$j] =~ /^$BE\_V/i && $words[$j+1] =~ /$ADV/i && $words[$j+2] =~ /^(his|$POSSPRO)\_/i){
+																			$words[$j] = $words[$j]  . "~BEMV";
+																		} else {
+																			if ($words[$j] =~ /^$BE\_V/i && $words[$j+1] =~ /$ADV/i && $words[$j+2] =~ /^$TITLE/i){
+																				$words[$j] = $words[$j]  . "~BEMV";
+																			} else {
+																				if ($words[$j] =~ /^$BE\_V/i && $words[$j+1] =~ /$ADV/i && $words[$j+2] =~ /_$/i){
+																					$words[$j] = $words[$j]  . "~BEMV";
+																				} else {
+																					if ($words[$j] =~ /^$BE\_V/i && $words[$j] !~ /~AUXBE/ && $words[$j+1] =~ /\w+_(D|N)/i){
+																						$words[$j] = $words[$j]  . "~BEMV";
+																					} else {
+																						if ($words[$j] =~ /^$BE\_V/i && $words[$j+1] =~ /^(his|$POSSPRO)\_/i){
+																							$words[$j] = $words[$j]  . "~BEMV";
+																						} else {
+																							if ($words[$j] =~ /^$BE\_V/i && $words[$j+1] =~ /\w+_\^/i){
+																								$words[$j] = $words[$j]  . "~BEMV";
+																							} else {
+																								if ($words[$j] =~ /^$BE\_V/i && $words[$j+1] =~ /^$TITLE/i){
+																									$words[$j] = $words[$j]  . "~BEMV";
+																								} else {
+																									if ($words[$j] =~ /^$BE\_V/i && $words[$j+1] =~ /($PREP|$NUM|_O)/i){
+																										$words[$j] = $words[$j]  . "~BEMV";
+																									} else {
+																										if ($words[$j] =~ /^$BE\_V/i && $words[$j+1] =~ /(\~DEMPRO|\~WH)/i){
+																											$words[$j] = $words[$j]  . "~BEMV";
+																										} else {
+																											if ($words[$j] =~ /^$BE\_V/i && $words[$j+1] =~ /$ADJ/i){
+																												$words[$j] = $words[$j]  . "~BEMV";
+																											} else {
+																												if ($words[$j] =~ /^$BE\_V/i && $words[$j+1] =~ /$ADV/i &&$words[$j+2] =~ /$ADJ/i){
+																													$words[$j] = $words[$j]  . "~BEMV";
+																												}
+																											}
+																										}
+																									}
+																								}
+																							}
+																						}
+																					}
+																				}
+																			}
+																		}
+																	}
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+
+
+
+##### specify aspect and voice
+
+					
+
+					if ($words[$j-2] =~ /^($BE|$GET)\_/i && $words[$j-2] !~ /\~PROCONTRACTAUXHAVE/ && $words[$j-1] =~ /^($PAST|\w+ed|\w+d|$PAST_PART|$IRREGULAR)\_V/i && $words[$j] =~ /^by_/i){
+						$words[$j] = $words[$j]  . "~PASSVEBY";
+					} else {
+						if ($words[$j-3] =~ /^($BE|$GET)\_/i && $words[$j-3] !~ /\~PROCONTRACTAUXHAVE/ && $words[$j-2] =~ /^($PAST|\w+ed|\w+d|$PAST_PART|$IRREGULAR)\_V/i && $words[$j-1] =~ /\w+_T/i && $words[$j] =~ /^by_/i){
+							$words[$j] = $words[$j]  . "~PASSVEBY";
+						} else {
+							if ($words[$j-3] =~ /^($BE|$GET)\_/i && $words[$j-3] !~ /\~PROCONTRACTAUXHAVE/ && $words[$j-2] =~ /^($PAST|\w+ed|\w+d|$PAST_PART|$IRREGULAR)\_V/i && $words[$j-1] =~ /\w+_R/i && $words[$j] =~ /^by_/i){
+								$words[$j] = $words[$j]  . "~PASSVEBY";
+							} else {
+								if ($words[$j-3] =~ /^($BE|$GET)\_/i && $words[$j-3] !~ /\~PROCONTRACTAUXHAVE/ && $words[$j-2] =~ /$ADV/i && $words[$j-1] =~ /^($PAST|\w+ed|\w+d|$PAST_PART|$IRREGULAR)\_V/i && $words[$j] =~ /^by_/i){
+									$words[$j] = $words[$j]  . "~PASSVEBY";
+								} else {
+									if ($words[$j-4] =~ /^($BE|$GET)\_/i && $words[$j-4] !~ /\~PROCONTRACTAUXHAVE/ && $words[$j-3] =~ /$ADV/i && $words[$j-2] =~ /^($PAST|\w+ed|\w+d|$PAST_PART|$IRREGULAR)\_V/i && $words[$j-1] =~ /\w+_T/ && $words[$j] =~ /^by_/i){
+										$words[$j] = $words[$j]  . "~PASSVEBY";
+									} else {
+										if ($words[$j-4] =~ /^($BE|$GET)\_/i && $words[$j-4] !~ /\~PROCONTRACTAUXHAVE/ && $words[$j-3] =~ /$ADV/i && $words[$j-2] =~ /$ADV/i && $words[$j-1] =~ /^($PAST|\w+ed|\w+d|$PAST_PART)\_V/i && $words[$j] =~ /^by_/i){
+											$words[$j] = $words[$j]  . "~PASSVEBY";
+										} else {
+											if ($words[$j-5] =~ /^($BE|$GET)\_/i && $words[$j-5] !~ /\~PROCONTRACTAUXHAVE/ && $words[$j-4] =~ /$ADV/i && $words[$j-3] =~ /$ADV/i && $words[$j-2] =~ /^($PAST|\w+ed|\w+d|$PAST_PART)\_V/i && $words[$j-1] =~ /\w+_T/i && $words[$j] =~ /^by_/i){
+												$words[$j] = $words[$j]  . "~PASSVEBY";
+											} else {
+												if ($words[$j-3] =~ /^($BE|$GET)\_/i && $words[$j-3] !~ /\~PROCONTRACTAUXHAVE/ && $words[$j-2] =~ /\w+_(N|O|\^)/i && $words[$j-1] =~ /^($PAST|\w+ed|\w+d|$PAST_PART|$IRREGULAR)\_V/i && $words[$j] =~ /^by_/i){
+													$words[$j] = $words[$j]  . "~PASSVEBY";
+												} else {
+													if ($words[$j-4] =~ /^($BE|$GET)\_/i && $words[$j-4] !~ /\~PROCONTRACTAUXHAVE/ && $words[$j-3] =~ /\w+_(N|O|\^)/i && $words[$j-2] =~ /^($PAST|\w+ed|\w+d|$PAST_PART|$IRREGULAR)\_V/i && $words[$j-1] =~ /\w+_T/i && $words[$j] =~ /^by_/i){
+														$words[$j] = $words[$j]  . "~PASSVEBY";
+													} else {
+														if ($words[$j-3] =~ /^($BE|$GET)\_/i && $words[$j-3] !~ /\~PROCONTRACTAUXHAVE/ && $words[$j-2] =~ /^($PAST|\w+ed|\w+d|$PAST_PART|$IRREGULAR)\_V/i && $words[$j-1] =~ /$ADV/i && $words[$j] =~ /^by_/i){
+															$words[$j] = $words[$j]  . "~PASSVEBY";
+														} else {
+															if ($words[$j-4] =~ /^($BE|$GET)\_/i && $words[$j-4] !~ /\~PROCONTRACTAUXHAVE/ && $words[$j-3] =~ /^($PAST|\w+ed|\w+d|$PAST_PART|$IRREGULAR)\_V/i && $words[$j-2] =~ /$ADV/i && $words[$j-1] =~ /$ADV/i && $words[$j] =~ /^by_/i){
+																$words[$j] = $words[$j]  . "~PASSVEBY";
+															} else {
+																if ($words[$j] =~ /^by_/i && $words[$j] !~ /\~PASSVEBY/ && $words[$j+1] !~ /\._,/){
+																	$words[$j] = $words[$j]  . "~ADV~OTHERADV";
+																} else {
+																	if ($words[$j] =~ /^by_/i && $words[$j] !~ /\~PASSVEBY/ && $words[$j+1] !~ /(\~GERUND|\~OTHERADV)/){
+																		$words[$j] = $words[$j]  . "~POTENBY";
+																	} else {
+																		if ($words[$j-1] =~ /^($BE|$GET)\_/i && $words[$j-1] !~ /\~PROCONTRACTAUXHAVE/ && $words[$j] =~ /^($PAST|\w+ed|\w+d|$PAST_PART|$IRREGULAR)\_V/i && $words[$j+1] !~ /^by_/i && $words[$j+2] !~ /^by_/i && $words[$j+3] !~ /^by_/i && $words[$j+4] !~ /^by_/i && $words[$j+5] !~ /^by_/i && $words[$j+6] !~ /^by_/i && $words[$j+7] !~ /^by_/i && $words[$j+8] !~ /^by_/i && $words[$j+9] !~ /^by_/i){
+																			$words[$j] = $words[$j]  . "~PASSIVE";
+																		} else {
+																			if ($words[$j-2] =~ /^($BE|$GET)\_/i && $words[$j-2] !~ /\~PROCONTRACTAUXHAVE/ && $words[$j-1] =~ /$ADV/i && $words[$j] =~ /^($PAST|\w+ed|\w+d|$PAST_PART|$IRREGULAR)\_V/i && $words[$j+1] !~ /^by_/i && $words[$j+2] !~ /^by_/i && $words[$j+3] !~ /^by_/i && $words[$j+4] !~ /^by_/i && $words[$j+5] !~ /^by_/i && $words[$j+6] !~ /^by_/i && $words[$j+7] !~ /^by_/i && $words[$j+8] !~ /^by_/i && $words[$j+9] !~ /^by_/i){
+																				$words[$j] = $words[$j]  . "~PASSIVE";
+																			} else {
+																				if ($words[$j-3] =~ /^($BE|$GET)\_/i && $words[$j-3] !~ /\~PROCONTRACTAUXHAVE/ && $words[$j-2] =~ /$ADV/i && $words[$j-1] =~ /$ADV/i && $words[$j] =~ /^($PAST|\w+ed|\w+d|$PAST_PART|$IRREGULAR)\_V/i && $words[$j+1] !~ /^by_/i && $words[$j+2] !~ /^by_/i && $words[$j+3] !~ /^by_/i && $words[$j+4] !~ /^by_/i && $words[$j+5] !~ /^by_/i && $words[$j+6] !~ /^by_/i && $words[$j+7] !~ /^by_/i && $words[$j+8] !~ /^by_/i && $words[$j+9] !~ /^by_/i){
+																					$words[$j] = $words[$j]  . "~PASSIVE";
+																				} 
+																			}
+																		}
+																	}
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									}
+								}
+							}
+						}			
+					}
+					
+					if ($words[$j] =~ /^$HAVE\_/i && $words[$j+1] =~ /\w+(en|ed)_V/i){
+						$words[$j+1] = $words[$j+1]  . "~PERFECT";
+					} else {
+						if ($words[$j] =~ /^$HAVE\_/i && $words[$j+1] =~ /($PAST_PART|$IRREGULAR|$PAST)\_V/i){
+							$words[$j+1] = $words[$j+1]  . "~PERFECT";
+						} else {
+							if ($words[$j] =~ /^$HAVE\_/i && $words[$j+1] =~ /$ADV/i && $words[$j+2] =~ /\w+(en|ed)_V/i){
+								$words[$j+2] = $words[$j+2]  . "~PERFECT";
+							} else {
+								if ($words[$j] =~ /^$HAVE\_/i && $words[$j+1] =~ /$ADV/i && $words[$j+2] =~ /($PAST_PART|$IRREGULAR|$PAST)_V/i){
+									$words[$j+2] = $words[$j+2]  . "~PERFECT";
+								} else {
+									if ($words[$j] =~ /^$HAVE\_/i && $words[$j+1] =~ /$ADV/i && $words[$j+2] =~ /$ADV/i && $words[$j+3] =~ /\w+(en|ed)_V/i){
+										$words[$j+3] = $words[$j+3]  . "~PERFECT";
+									} else {
+										if ($words[$j] =~ /^$HAVE\_/i && $words[$j+1] =~ /$ADV/i && $words[$j+2] =~ /$ADV/i && $words[$j+3] =~ /($PAST_PART|$IRREGULAR|$PAST)_V/i){
+											$words[$j+3] = $words[$j+3]  . "~PERFECT";
+										}
+									}
+								}
+							}
+						}
+					}
+
+
+					
+
+##### find the imperative if the first word of the tweet is a verb
+
+					if ($j == 0 && $words[$j] =~ /\w+_V/i){
+						print "checking for imperative";
+								my $VBX = $words[$j];
+								print $VBX;
+								
+						if ($VBX =~ /\w+ed_V/i && $VBX !~ /\~VBI/){
+							$words[$j] = $words[$j]  . "~VBIX";
+						} else {
+							if ($VBX =~ /^$PAST\_V/i && $VBX !~ /\~VBI/){
+								$words[$j] = $words[$j]  . "~VBIX";
+							} else {
+								if ($VBX =~ /\w+[^(dark|bright|whit|hard|soft|thick|fresh|rip|sweet|length|short|straight|loos|flatt|broad|tight|strength|quiet|list|glist|less|fast)]en_V/i && $VBX !~ /\~VBI/){
+									$words[$j] = $words[$j]  . "~VBIX";
+								} else {
+									if ($VBX =~ /^$PAST_PART\_V/i && $VBX !~ /(^come_|^cum_|^com_|\~VBIX)/i){
+										$words[$j] = $words[$j]  . "~VBIX";
+									} else {
+										if ($VBX =~ /\w+ing_V/i && $VBX !~ /\~VBI/){
+											$words[$j] = $words[$j]  . "~VBIG";
+										} else {
+											if ($VBX =~ /^(ain't|aren't|aint|is|arent|am|are|had|hadn't|hadnt|has|hasnt|hasn't|isn't|did|didn't|didnt|haven't|havnt|havent|doesn't|doesnt)_V/i && $VBX !~ /\~VBI/){
+												$words[$j] = $words[$j]  . "~VBIQ"
+											} else {
+												if ($VBX =~ /^$MODAL\_V/i && $VBX !~ /~VBI/){
+													$words[$j] = $words[$j]  . "~VBIMD";
+												} else {
+													if ($VBX =~ /^(wish|be|do|don't|dnt|dont|du|hve|have|hav|hv)_V/i && $words[$j+1] =~ /^($SUBJPRO|u|you|yu|you'd|yu'd|yud|u'd|ud|youll|you'll|yu'll|yull|u'll|ull|you've|youve|yu've|yuve|u've|uve|you're|youre|your|yur|yr|y're|yre|ur|u're|ure|y'all|yall)_(O|L)/i && $VBX !~ /\~VBI/){
+														$words[$j] = $words[$j]  . "~IVB";
+													} else {
+														if ($VBX =~ /^(be|do|don't|dnt|dont|du|hve|have|hav|hv)_V/i && $VBX !~ /\~IVB/ && $words[$j+1] =~ /($PAST|$PAST_PART|\w+ed|\w+[^(dark|bright|whit|hard|soft|thick|fresh|rip|sweet|length|short|straight|loos|flatt|broad|tight|strength|quiet|list|glist|less|fast)]en)_V/i){
+															$words[$j] = $words[$j]  . "~IVB";
+														} else {
+															if ($VBX =~ /^(love|wish|hope|want|be|do|don't|dnt|dont|du|hve|have|hav|hv)_V/i && $VBX !~ /\~IVB/ && $words[$j+1] =~ /^(to|2)_/i){
+																$words[$j] = $words[$j]  . "~IVB";
+															} else {
+																if ($VBX =~ /^(be|do|don't|dnt|dont|du|hve|have|hav|hv)_V/i && $VBX !~ /\~IVB/ && $words[$j+1] =~ /\w+_R/i && $words[$j+2] =~ /($PAST|$PAST_PART|\w+ed|\w+[^(dark|bright|whit|hard|soft|thick|fresh|rip|sweet|length|short|straight|loos|flatt|broad|tight|strength|quiet|list|glist|less|fast)]en)_V/i){
+																	$words[$j] = $words[$j]  . "~IVB";
+																} else {
+																	if ($VBX =~ /^$VERB_S\_V/i && $VBX !~ /\~IMPERATIVE/){
+																		$words[$j] = $words[$j]  . "~IMPERATIVE";
+																	} else {
+																		if ($VBX =~ /^$IRREGULAR\_V/i && $VBX !~ /~IMPERATIVE/){
+																			$words[$j] = $words[$j]  . "~IMPERATIVE";
+																		} else {
+																			if ($VBX =~ /\w+s_V/i && $VBX !~ /\~VBI/){
+																				$words[$j] = $words[$j]  . "~VBIS";
+																			} else {
+																				if ($VBX =~ /_V/i && $VBX !~ /(\~IMPERATIVE|\~IVB|\~VBI)/ && $words[$j+1] =~ /^(to|2)_/i && $words[$j+2] =~ /\w+_V/){
+																					$words[$j] = $words[$j]  . "~IMPERATIVE";
+																				} else {
+																					if ($VBX =~ /_V/i && $VBX !~ /~IVB/ && $words[$j+1] =~ /^$SUBJPRO\_/i){
+																						$words[$j] = $words[$j]  . "~IVB";
+																					} else {
+																						if ($VBX =~ /_V/i && $VBX !~ /(\~IMPERATIVE|\~IVB|\~VBI|\~CONTRACTWH)/ && $words[$j+1] !~ /^(u|you|yu|you'd|yu'd|yud|u'd|ud|youll|you'll|yu'll|yull|u'll|ull|you've|youve|yu've|yuve|u've|uve|you're|youre|your|yur|yr|y're|yre|ur|u're|ure|y'all|yall|god|goodness|\w+ed)\_(O|N|^|V)/i && $words[$j+1] !~ /^$SUBJPRO\_/i && $words[$j+1] !~ /\w+_P_\~INFINITIVE/){
+																							$words[$j] = $words[$j]  . "~IMPERATIVE";
+																						}
+																					}
+																				}
+																			}
+																		}
+																	}
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									}		
+								}
+							}		
+						}
+					}		
+
+					if ($words[$j-1] =~ /[\-\:\!\.\?]_(,|G|Q)/ && $words[$j] =~ /\w+_V/i && $words[$j] !~ /\~PROCONTRACT/){
+						print "checking for imperative";
+						my $VBX = $words[$j];	
+						print $VBX;
+
+						if ($VBX =~ /\w+ed_V/i && $VBX !~ /\~VBI/){
+							$words[$j] = $words[$j]  . "~VBIX";
+						} else {
+							if ($VBX =~ /^$PAST\_V/i && $VBX !~ /\~VBI/){
+								$words[$j] = $words[$j]  . "~VBIX";
+							} else {
+								if ($VBX =~ /\w+[^(dark|bright|whit|hard|soft|thick|fresh|rip|sweet|length|short|straight|loos|flatt|broad|tight|strength|quiet|list|glist|less|fast)]en_V/i && $VBX !~ /\~VBI/){
+									$words[$j] = $words[$j]  . "~VBIX";
+								} else {
+									if ($VBX =~ /^$PAST_PART\_V/i && $VBX !~ /\~VBIX/){
+										$words[$j] = $words[$j]  . "~VBIX";
+									} else {
+										if ($VBX =~ /\w+ing_V/i && $VBX !~ /\~VBI/){
+											$words[$j] = $words[$j]  . "~VBIG";
+										} else {
+											if ($VBX =~ /^(ain't|aren't|aint|is|arent|am|are|had|hadn't|hadnt|has|hasnt|hasn't|isn't|did|didn't|didnt|haven't|havnt|havent|doesn't|doesnt)_V/i && $VBX !~ /\~VBI/){
+												$words[$j] = $words[$j]  . "~VBIQ"
+											} else {
+												if ($VBX =~ /^$MODAL\_V/i && $VBX !~ /~VBI/){
+													$words[$j] = $words[$j]  . "~VBIMD";
+												} else {
+													if ($VBX =~ /^(wish|be|do|don't|dnt|dont|du|hve|have|hav|hv)_V/i && $VBX !~ /\~IVB/ && $words[$j+1] =~ /^($SUBJPRO|u|you|yu|you'd|yu'd|yud|u'd|ud|youll|you'll|yu'll|yull|u'll|ull|you've|youve|yu've|yuve|u've|uve|you're|youre|your|yur|yr|y're|yre|ur|u're|ure|y'all|yall)_(O|L)/i && $VBX !~ /\~VBI/){
+														$words[$j] = $words[$j]  . "~IVB";
+													} else {
+														if ($VBX =~ /^(be|do|don't|dnt|dont|du|hve|have|hav|hv)_V/i && $VBX !~ /\~IVB/ && $words[$j+1] =~ /($PAST\_V|$PAST_PART\_V|\w+ed_V|\w+[^(dark|bright|whit|hard|soft|thick|fresh|rip|sweet|length|short|straight|loos|flatt|broad|tight|strength|quiet|list|glist|less|fast)]en_V)/i){
+															$words[$j] = $words[$j]  . "~IVB";
+														} else {
+															if ($VBX =~ /^(love|wish|hope|want|be|do|don't|dnt|dont|du|hve|have|hav|hv)_V/i && $VBX !~ /\~IVB/ && $words[$j+1] =~ /^(to|2)_/i){
+																$words[$j] = $words[$j]  . "~IVB";
+															} else {
+																if ($VBX =~ /^(be|do|don't|dnt|dont|du|hve|have|hav|hv)_V/i && $VBX !~ /\~IVB/ && $words[$j+1] =~ /\w+_R/i && $words[$j+2] =~ /($PAST|$PAST_PART|\w+ed|\w+[^(dark|bright|whit|hard|soft|thick|fresh|rip|sweet|length|short|straight|loos|flatt|broad|tight|strength|quiet|list|glist|less|fast)]en)_V/i){
+																	$words[$j] = $words[$j]  . "~IVB";
+																} else {
+																	if ($VBX =~ /^$VERB_S\_V/i && $VBX !~ /\~IMPERATIVE/){
+																		$words[$j] = $words[$j]  . "~IMPERATIVE";
+																	} else {
+																		if ($VBX =~ /^$IRREGULAR\_V/i && $VBX !~ /~IMPERATIVE/){
+																			$words[$j] = $words[$j]  . "~IMPERATIVE";
+																		} else {
+																			if ($VBX =~ /\w+s_V/i && $VBX !~ /\~VBI/){
+																				$words[$j] = $words[$j]  . "~VBIS";
+																			} else {
+																				if ($VBX =~ /_V/i && $VBX !~ /(\~IMPERATIVE|\~IVB|\~VBI)/ && $words[$j+1] =~ /^(to|2)_/i && $words[$j+2] =~ /\w+_V/){
+																					$words[$j] = $words[$j]  . "~IMPERATIVE";
+																				} else {
+																					if ($VBX =~ /_V/i && $VBX !~ /~IVB/ && $words[$j+1] =~ /^$SUBJPRO\_/i){
+																						$words[$j] = $words[$j]  . "~IVB";
+																					} else {
+																						if ($VBX =~ /_V/i && $VBX !~ /(\~IMPERATIVE|\~IVB|\~VBI|\~CONTRACTWH)/ && $words[$j+1] !~ /^(u|you|yu|you'd|yu'd|yud|u'd|ud|youll|you'll|yu'll|yull|u'll|ull|you've|youve|yu've|yuve|u've|uve|you're|youre|your|yur|yr|y're|yre|ur|u're|ure|y'all|yall|god|goodness|\w+ed)\_(O|N|^|V)/i && $words[$j+1] !~ /^$SUBJPRO\_/i && $words[$j+1] !~ /\w+_P_\~INFINITIVE/){
+																							$words[$j] = $words[$j]  . "~IMPERATIVE";
+																						}
+																					}
+																				}
+																			}
+																		}
+																	}
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									}		
+								}
+							}		
+						}
+					}
+					if ($words[$j] =~ /\~VERB/ && $words[$j] !~ /(\~PUBV|\~PRVV|\~SUAV|\~COPVB|\~BEMV|\~HAVEMV|\~PROVDO|\~AUXHAVE|\~AUXBE|\~AUXDO|\~DOIVB|\~HAVEIVB|\~BEIVB|\~STANCEVB|\~PERCEPTVB|\~QDO|\~QBE|\~MULTIWVB|\~VBI|\~MDPRED|\~MDPOSS|\~MDPRED|\~IVB)/){
+						$words[$j] = $words[$j]  . "~OTHRVERB";
+					}		
+
+					if ($words[$j] =~ /^stfu_/i){
+						$words[$j] = $words[$j]  . "~IMPERATIVE";
+					}
+										
+
+					
+					}
+
+				foreach my $words (@words){
+					print OUT "$words " . "\n";
+				}
+				print OUT "\n";
+	}
+
+close OUT;
+
+
