@@ -1,15 +1,15 @@
 import os
 
 def main(corpusPath):
-	directory = corpusPath
+	directory = './gimple_tagged/' + corpusPath + '/'
 	for file in os.listdir(directory):
 		path = directory + file
-		os.system('perl ./Clarke_Tagger_2018.txt %s' % path)
-		with open("mdatagtweets01.txt", "r") as f:
-			with open("./clarke_tagged/%s_tagged.txt" % file.rsplit('_', 1)[0], "w") as output:
+		os.system('perl ./Clarke_Tagger_2018.txt %s %s' % (path, str(corpusPath)))
+		with open("mdatagtweets%s.txt" % str(corpusPath), "r") as f:
+			with open("./clarke_tagged/%s/%s_tagged.txt" % (str(corpusPath), file.rsplit('_', 1)[0]), "w") as output:
 				for line in f:
 					output.write(line)
-		os.remove("mdatagtweets01.txt")
+		os.remove("mdatagtweets%s.txt" % str(corpusPath))
 
 if __name__ == '__main__':
 	import argparse

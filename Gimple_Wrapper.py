@@ -1,21 +1,27 @@
 import os
 import subprocess
+from chardet import detect
+
+# get file encoding type
+def get_encoding_type(file):
+	with open(file, 'rb') as f:
+		rawData = f.read()
+	return detect(rawData)['encoding']
 
 def main(corpusPath):
-	# the corpus is stored under "directories" and each register is in a different subdirectory
-	directory = "./directories/" + str(corpusPath) + "/"
+	directory = "./CORE_clean/" + str(corpusPath) + "/"
 	for file in os.listdir(directory):
 		path = directory + file
-		rawTag = subprocess.run(['./ark-tweet-nlp-0.3.2/runTagger.sh', path], stdout=subprocess.PIPE).stdout.decode('utf-8')
-		## rawTag is the complete output of the tagger which is quiet messy
-		## splitList contains each paragraph as a separate list item
+		correct_encoding = get_encoding_type(path)
+		if correct_encoding == None:
+			continue
+		rawTag = subprocess.run(['./ark-tweet-nlp-0.3.2/runTagger.sh', path], stdout=subprocess.PIPE).stdout.decode(correct_encoding, "ignore")
 		splitList = rawTag.split('\n')
 		taggedFinal = ''
-		print(splitList)
 		for paragraph in splitList:
 			i = 0
-			## data[0] contains the text, data[1] contains the tags
 			data = paragraph.split("\t")
+			## print(text)
 			for word in data[0].split(" "):
 				if len(word) == 0:
 					continue
