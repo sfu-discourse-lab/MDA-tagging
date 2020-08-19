@@ -16,7 +16,7 @@ No problems were encountered with this dataset and all features were counted usi
 ###### CORE
 For the CORE corpus the CORE_cleanup.py script was ran to remove all html tags and other artifacts from the data gathering step.
 
-Since some of the filenames contained whitespace the removeSpace.py script was run to deal with this after which CORE\_rename.py was run on the files to give each file the correct prefix.
+CORE\_rename.py was run on the files to give each file the correct prefix and remove whitespace from filenames.
 
 After this step the Gimple tagger was run using Gimple\_Wrapper.py. Due to encoding problems in certain proper nouns containing vowels with accent marks we turned on "error: ignore" which removes all instances of bad encoding. This did not seem to have an impact on the tagger as it would still recognize these words as proper nouns. After this the Clarke\_Wraper.py was run without any problem
 

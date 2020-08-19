@@ -1,9 +1,17 @@
+# ----------------------------------------------------------------
+# python wrapper to run the Gimple Tagger on directory of files
+#
+# (C) 2020 Laurens Bosman, Discourse Processing Lab, SFU
+# Released under GNU Public License (GPL)
+# email lbosman@sfu.ca
+# ----------------------------------------------------------------
+
 import os
 import subprocess
 from chardet import detect
 
-# get file encoding type
 def get_encoding_type(file):
+	"""get the encoding of the file"""
 	with open(file, 'rb') as f:
 		rawData = f.read()
 	return detect(rawData)['encoding']
@@ -12,6 +20,7 @@ def main(corpusPath):
 	directory = "./CORE_clean/" + str(corpusPath) + "/"
 	for file in os.listdir(directory):
 		path = directory + file
+		# due to problems with encoding if the encoding cannot be retrieved the data is discarded
 		correct_encoding = get_encoding_type(path)
 		if correct_encoding == None:
 			continue
@@ -21,7 +30,6 @@ def main(corpusPath):
 		for paragraph in splitList:
 			i = 0
 			data = paragraph.split("\t")
-			## print(text)
 			for word in data[0].split(" "):
 				if len(word) == 0:
 					continue

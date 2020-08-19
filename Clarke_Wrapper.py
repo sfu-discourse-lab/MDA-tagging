@@ -1,3 +1,11 @@
+# ----------------------------------------------------------------
+# wrapper to run the Clarke Tagger on entire directory
+#
+# (C) 2020 Laurens Bosman, Discourse Processing Lab, SFU
+# Released under GNU Public License (GPL)
+# email lbosman@sfu.ca
+# ----------------------------------------------------------------
+
 import os
 
 def main(corpusPath):
